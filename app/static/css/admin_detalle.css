@@ -292,3 +292,15 @@ video {
     background: linear-gradient(135deg, var(--warning), var(--warning-light));
     color: var(--bg-black);
 }
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.status-success { background: #4CAF50; }   /* verde */
+.status-warning { background: #FFC107; }   /* amarillo */
+.status-danger  { background: #f44336; }   /* rojo */
+.status-info    { background: #2196F3; }   /* azul */

@@ -72,13 +72,8 @@
                     <div class="summary-box">
                         <div class="summary-title"><i class="fas fa-eye"></i> Análisis Visual</div>
                         <div class="summary-value">
-                            {% if video.contenido_explicito == 'Explícito' %}
-                                <span class="status-badge status-rejected">{{ video.contenido_explicito }}</span>
-                            {% elif video.contenido_explicito == 'Posible' %}
-                                <span class="status-badge status-pending">{{ video.contenido_explicito }}</span>
-                            {% else %}
-                                <span class="status-badge status-accepted">{{ video.contenido_explicito }}</span>
-                            {% endif %}
+                            {% set visual_status = video.get_moderation_status() %}
+                            <span class="status-badge status-{{ visual_status.color }}">{{ visual_status.text }}</span>
                         </div>
                     </div>
                     <div class="summary-box">
