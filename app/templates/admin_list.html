@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Listado de Videos</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_list.css') }}">
+</head>
+<body>
+  <div class="container fade-in">
+    <div class="header">
+        <div class="header-with-logo">
+            <h2>Listado de Videos Cargados</h2>
+        </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number" id="total-videos">{{ videos|length }}</div>
+          <div class="stat-label">Total Videos</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="aceptados">
+            {{ videos|selectattr("estado","equalto","aceptado")|list|length }}
+          </div>
+          <div class="stat-label">Aceptados</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="rechazados">
+            {{ videos|selectattr("estado","equalto","rechazado")|list|length }}
+          </div>
+          <div class="stat-label">Rechazados</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="pendientes">
+            {{ videos|selectattr("estado","equalto","sin-revisar")|list|length }}
+          </div>
+          <div class="stat-label">Pendientes</div>
+        </div>
+      </div>
+    </div>
+
+    {% if videos %}
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th><i class="fas fa-calendar-alt"></i> Fecha</th>
+            <th><i class="fas fa-user"></i> Usuario</th>
+            <th><i class="fas fa-file"></i> Archivo</th>
+            <th><i class="fas fa-robot"></i> Estado IA</th>
+            <th><i class="fas fa-user-check"></i> Estado Admin</th>
+            <th><i class="fas fa-cogs"></i> Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for video in videos %}
+          <tr data-video-id="{{ video.id }}">
+            <td class="fecha">{{ video.fecha_subida.strftime('%Y-%m-%d %H:%M') if video.fecha_subida else 'Sin fecha' }}</td>
+            <td class="socio">Usuario {{ video.usuario_id }}</td>
+            <td class="archivo">{{ video.nombre_archivo[:30] }}{{ '...' if video.nombre_archivo|length > 30 else '' }}</td>
+            
+            <!-- Estado IA -->
+            <td>
+              <span class="estado-ia {{ video.estado_ia }}">
+                {% if video.estado_ia == 'completado' %}
+                  <i class="fas fa-check-circle"></i> Completado
+                {% elif video.estado_ia == 'procesando' %}
+                  <i class="fas fa-spinner fa-spin"></i> Procesando
+                {% elif video.estado_ia == 'error' %}
+                  <i class="fas fa-exclamation-triangle"></i> Error
+                {% else %}
+                  <i class="fas fa-hourglass-half"></i> Pendiente
+                {% endif %}
+              </span>
+            </td>
+            
+            <!-- Estado Administrativo -->
+            <td>
+              <span class="estado-admin {{ video.estado }}">
+                {% if video.estado == 'aceptado' %}
+                  <i class="fas fa-check-circle"></i> Aceptado
+                {% elif video.estado == 'rechazado' %}
+                  <i class="fas fa-times-circle"></i> Rechazado
+                {% else %}
+                  <i class="fas fa-clock"></i> Sin Revisar
+                {% endif %}
+              </span>
+            </td>
+            
+            <td>
+              <div class="actions">
+                <a href="{{ url_for('main.ver_detalle_video', video_id=video.id) }}" class="btn"><i class="fas fa-eye"></i> Detalle</a>
+                <button type="button" class="btn btn-secondary btn-play" data-id="{{ video.id }}"><i class="fas fa-play"></i> Ver</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="table-container">
+      <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-video"></i></div>
+        <div class="empty-text">No hay videos cargados</div>
+        <div class="empty-subtext">Los videos que se suban aparecerán aquí</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Modal (inyectada por JS si no existe) -->
+  <script src="{{ url_for('static', filename='js/admin_list.js') }}"></script>
+</body>
+</html>

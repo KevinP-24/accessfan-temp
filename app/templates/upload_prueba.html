@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subir Video</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- ✅ Mensaje de confirmación agregado -->
+        {% if upload_success %}
+        <div class="success-message" id="success-message">
+            <div class="success-content">
+                <i class="fas fa-check-circle"></i>
+                <span>¡Video subido correctamente!</span>
+            </div>
+        </div>
+        {% endif %}
+        <!-- ✅ Fin mensaje -->
+
+        <div class="header-with-logo">
+            <img src="" alt="Logo del Club" class="page-logo" id="club-logo">
+            <h2 id="page-title">Subir Video</h2>
+        </div>
+        
+        <div class="upload-progress" id="upload-progress">
+            <div class="progress-content">
+                <div class="spinner"></div>
+                <div class="progress-text">
+                    <h3>Subiendo video...</h3>
+                    <p>Por favor, no cierres esta ventana</p>
+                </div>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+        
+        <form method="post" enctype="multipart/form-data" action="{{ url_for('main.upload_video_dinamico') }}" id="upload-form">
+            
+            <input type="hidden" id="club_id_field" name="club_id" value="">
+            <input type="hidden" id="user_id_field" name="user_id" value="">
+            <input type="hidden" id="user_name_field" name="user_name" value="">
+            
+            <div class="form-group">
+                <label for="video">Selecciona un video:</label>
+                <div class="file-input-wrapper">
+                    <input type="file" name="video" id="video" accept="video/*" required>
+                    <label for="video" class="file-input-label" id="file-label">
+                        <div class="upload-icon"><i class="fas fa-video"></i></div>
+                        <span>Haz clic aquí o arrastra tu video</span>
+                        <small>Formatos soportados: MP4, AVI, MOV, WMV</small>
+                    </label>
+                </div>
+                <div class="file-info" id="file-info">
+                    <h4>Archivo seleccionado:</h4>
+                    <p id="file-details"></p>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="desc">Descripción (opcional):</label>
+                <textarea name="descripcion" id="desc"
+                    placeholder="Describe tu video... ¿Qué contiene? ¿Cuándo fue grabado? ¿Algún detalle especial?"></textarea>
+            </div>
+            
+            <video controls id="preview"></video>
+            
+            <button type="submit" class="submit-btn" id="submit-btn">
+                <span>Subir Video</span>
+            </button>
+        </form>
+    </div>
+    
+    <script>
+        window.addEventListener('message', function(event) {
+            // En producción, aquí iría el dominio real como 'https://accesfan.ar'
+            if (event.origin !== window.location.origin) {
+                console.warn("Mensaje ignorado de origen no confiable:", event.origin);
+                return;
+            }
+
+            const datos = event.data;
+
+            // 1. Personalizar Tema (Colores)
+            if (datos.club_color) {
+                const root = document.documentElement;
+                root.style.setProperty('--primary-color', datos.club_color);
+                root.style.setProperty('--border-color', datos.club_color + '33');
+                root.style.setProperty('--shadow-color', datos.club_color + '33');
+                root.style.setProperty('--focus-shadow', datos.club_color + '33');
+                root.style.setProperty('--bg-selected', datos.club_color + '1A');
+                root.style.setProperty('--bg-selected-light', datos.club_color + '0D');
+                root.style.setProperty('--btn-shadow', datos.club_color + '66');
+                root.style.setProperty('--info-bg', datos.club_color + '1A');
+            }
+
+            // 2. Personalizar Contenido (Logo y Título)
+            document.getElementById('club-logo').src = datos.club_logo || '';
+            document.getElementById('page-title').textContent = `Subir Video del Socio ${datos.club_nombre || ''}`;
+
+            // 3. Rellenar Datos Ocultos del Formulario
+            document.getElementById('club_id_field').value = datos.club_id || '';
+            document.getElementById('user_id_field').value = datos.user_id || '';
+            document.getElementById('user_name_field').value = datos.user_name || '';
+        });
+    </script>
+    
+    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+</body>
+</html>

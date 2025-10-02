@@ -1,0 +1,78 @@
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+*.sqlite3
+*.db
+
+# ---- Entornos virtuales ----
+venv/
+env/
+.venv/
+
+# ---- Configuración y secretos ----
+.env
+*.env
+app/credentials/*.json
+*.pem
+*.key
+
+# ---- Archivos de sistema ----
+.DS_Store
+Thumbs.db
+
+# ---- Coverage / Testing ----
+.coverage
+htmlcov/
+.pytest_cache/
+.cache/
+.tox/
+nosetests.xml
+coverage.xml
+
+# ---- Distribución / builds ----
+dist/
+build/
+*.egg-info/
+
+# ---- Archivos temporales ----
+*.tmp
+*.swp
+*.bak
+
+# ---- Videos / uploads ----
+uploads/
+*.mp4
+*.avi
+*.mov
+*.webm
+*.3gp
+*.3g2
+
+# ---- IDEs ----
+.vscode/
+.idea/
+*.iml
+
+
+# ---- VS Code / IDE ----
+.vscode/
+.vscode/*
+.idea/
+*.iml
+
+
+# ---- Archivos de diseño / prueba visual ----
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.psd
+*.fig
+*.sketch
+*.xcf

@@ -1,0 +1,98 @@
+<!-- Agregar esto al CSS existente o crear archivo separado -->
+<style>
+/* Header Styles - Demo Rápido */
+.demo-header {
+    background: linear-gradient(135deg, #000000, #1C1C1C);
+    border-bottom: 3px solid #F5522C;
+    padding: 1rem 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 1000;
+}
+
+.demo-header-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.demo-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    color: #FFFFFF;
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+
+.demo-logo i {
+    color: #F5522C;
+    font-size: 2rem;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.demo-nav {
+    display: flex;
+    gap: 1rem;
+}
+
+.demo-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    background: rgba(245, 82, 44, 0.1);
+    border: 1px solid #F5522C;
+    border-radius: 8px;
+    color: #FFFFFF;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.demo-nav-link:hover {
+    background: linear-gradient(135deg, #F5522C, #D74623);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(245, 82, 44, 0.3);
+}
+
+@media (max-width: 768px) {
+    .demo-header-container {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    .demo-nav {
+        justify-content: center;
+    }
+}
+</style>
+
+<header class="demo-header">
+    <div class="demo-header-container">
+        <div class="demo-logo">
+            <i class="fas fa-video"></i>
+            <span>AccessFan Platform</span>
+        </div>
+        
+  <!--       <nav class="demo-nav">
+            <a href="/" class="demo-nav-link">
+                <i class="fas fa-upload"></i> Subir Video
+            </a>
+            <a href="/admin/videos" class="demo-nav-link">
+                <i class="fas fa-list"></i> Gestionar Videos
+            </a>
+        </nav>  -->
+    </div>
+</header>

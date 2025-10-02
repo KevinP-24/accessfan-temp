@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subir Video</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}">
+
+    {% if team_color %}
+    <style>
+        :root {
+            --primary-color: {{ team_color }};
+            --border-color: {{ team_color }}33;
+            --shadow-color: {{ team_color }}33;
+            --focus-shadow: {{ team_color }}33;
+            --bg-selected: {{ team_color }}1A;
+            --bg-selected-light: {{ team_color }}0D;
+            --btn-shadow: {{ team_color }}66;
+            --info-bg: {{ team_color }}1A;
+        }
+    </style>
+    {% endif %}
+</head>
+<body>
+    <div class="container">
+        <!-- Mensaje de confirmación -->
+        {% if upload_success %}
+        <div class="success-message" id="success-message">
+            <div class="success-content">
+                <i class="fas fa-check-circle"></i>
+                <span>¡Video subido correctamente!</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="header-with-logo">
+            <img src="{{ logo_url }}" alt="Logo ESC-CSIR" class="page-logo">
+            <h2>Subir Video del Socio</h2>
+        </div>        
+        
+        <!-- Barra de progreso (oculta inicialmente) -->
+        <div class="upload-progress" id="upload-progress">
+            <div class="progress-content">
+                <div class="spinner"></div>
+                <div class="progress-text">
+                    <h3>Subiendo video...</h3>
+                    <p>Por favor, no cierres esta ventana</p>
+                </div>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+        
+        <form method="post" enctype="multipart/form-data" action="{{ url_for('main.upload_video_dinamico') }}" id="upload-form">
+            <input type="hidden" name="club_id" value="{{ club_id }}">
+            
+            <div class="form-group">
+                <label for="video">Selecciona un video:</label>
+                <div class="file-input-wrapper">
+                    <input type="file" name="video" id="video" accept="video/*" required>
+                    <label for="video" class="file-input-label" id="file-label">
+                        <div class="upload-icon"><i class="fas fa-video"></i></div>
+                        <span>Haz clic aquí o arrastra tu video</span>
+                        <small>Formatos soportados: MP4, AVI, MOV, WMV</small>
+                    </label>
+                </div>
+                <div class="file-info" id="file-info">
+                    <h4>Archivo seleccionado:</h4>
+                    <p id="file-details"></p>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="desc">Descripción (opcional):</label>
+                <textarea name="descripcion" id="desc"
+                    placeholder="Describe tu video... ¿Qué contiene? ¿Cuándo fue grabado? ¿Algún detalle especial?"></textarea>
+            </div>
+            
+            <video controls id="preview"></video>
+            
+            <button type="submit" class="submit-btn" id="submit-btn">
+                <span>Subir Video</span>
+            </button>
+        </form>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+</body>
+</html>

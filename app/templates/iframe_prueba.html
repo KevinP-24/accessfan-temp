@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Prueba de Iframe Padre</title>
+</head>
+<body>
+    
+    {% include '_header.html' %}
+    <iframe id="videoFrame" 
+            src="{{ url_for('main.upload_prueba_hijo') }}"
+            width="100%" 
+            height="700px" 
+            frameborder="0"
+            style="border: 2px solid #ccc;">
+    </iframe>
+
+    <script>
+        const iframe = document.getElementById('videoFrame');
+        
+        const datosCompletosParaIframe = {
+            auth_token: {{ auth_token | tojson }}, 
+            
+            club_id: 99,
+            club_nombre: "Club Independiente Rivadavia", 
+            club_logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Escudo_del_Club_Independiente_Rivadavia.svg/250px-Escudo_del_Club_Independiente_Rivadavia.svg.png",
+            club_color: "#0e1d90", 
+            user_id: 456,
+            user_name: "Socio de Prueba" 
+        };
+
+        iframe.onload = function() {
+            iframe.contentWindow.postMessage(datosCompletosParaIframe, window.location.origin);
+            console.log("Datos enviados al iframe (con token real):", datosCompletosParaIframe);
+        };
+    </script>
+    {% include '_footer.html' %}
+
+</body>
+</html>

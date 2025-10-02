@@ -1,0 +1,155 @@
+<!-- Agregar esto al CSS existente o crear archivo separado -->
+<style>
+/* Footer Styles - Demo Rápido */
+body {
+    margin: 0;
+    padding-top: 80px; /* Espacio para el header fijo */
+}
+
+.demo-footer {
+    background: linear-gradient(135deg, #000000, #1C1C1C);
+    border-top: 3px solid #F5522C;
+    margin-top: 3rem;
+    padding: 2rem 0 1rem;
+    color: #FFFFFF;
+    width: 100%;
+    position: relative;
+    bottom: 0;
+}
+
+.demo-footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin-bottom: 1rem;
+}
+
+.demo-footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: #F5522C;
+}
+
+.demo-footer-brand i {
+    font-size: 1.5rem;
+}
+
+.demo-footer-desc {
+    color: #CCCCCC;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.demo-footer-section h4 {
+    color: #F5522C;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+}
+
+.demo-footer-links {
+    list-style: none;
+    padding: 0;
+}
+
+.demo-footer-links li {
+    margin-bottom: 0.8rem;
+}
+
+.demo-footer-links a {
+    color: #CCCCCC;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.demo-footer-links a:hover {
+    color: #F5522C;
+    transform: translateX(5px);
+}
+
+.demo-footer-info {
+    color: #CCCCCC;
+    font-size: 0.85rem;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.demo-footer-info i {
+    color: #F5522C;
+    width: 16px;
+}
+
+.demo-footer-bottom {
+    border-top: 1px solid #333;
+    padding-top: 1rem;
+    text-align: center;
+    color: #999;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 768px) {
+    .demo-footer-container {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+    .demo-footer-links a,
+    .demo-footer-info {
+        justify-content: center;
+    }
+}
+</style>
+
+<footer class="demo-footer">
+    <div class="demo-footer-container">
+        <div>
+            <div class="demo-footer-brand">
+                <i class="fas fa-video"></i>
+                <span>AccessFan</span>
+            </div>
+            <p class="demo-footer-desc">
+                Plataforma de gestión y análisis automático de contenido audiovisual con inteligencia artificial.
+            </p>
+        </div>
+        
+        <div class="demo-footer-section">
+            <h4>Funcionalidades</h4>
+            <ul class="demo-footer-links">
+                <li><a href="/"><i class="fas fa-upload"></i> Subida de Videos</a></li>
+                <li><a href="/admin/videos"><i class="fas fa-list"></i> Gestión de Contenido</a></li>
+                <li><a href="#"><i class="fas fa-robot"></i> Análisis con IA</a></li>
+            </ul>
+        </div>
+        
+        <div class="demo-footer-section">
+            <h4>Tecnología</h4>
+            <p class="demo-footer-info">
+                <i class="fas fa-shield-alt"></i>
+                Detección automática de contenido
+            </p>
+            <p class="demo-footer-info">
+                <i class="fas fa-cloud"></i>
+                Almacenamiento en Google Cloud
+            </p>
+            <p class="demo-footer-info">
+                <i class="fas fa-eye"></i>
+                Análisis de etiquetas y logotipos
+            </p>
+        </div>
+    </div>
+    
+    <div class="demo-footer-bottom">
+        <p>&copy; 2025 AccessFan Platform - Demo para Cliente</p>
+    </div>
+</footer>
