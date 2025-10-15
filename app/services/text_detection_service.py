@@ -89,7 +89,6 @@ def _detectar_palabras_problematicas_normalizado(texto_norm: str, locale: str) -
                 seen.add(w_norm)
     return found
 
-
 def _get_vision_client():
     """Crea cliente de Cloud Vision API usando las mismas credenciales que Video AI"""
     try:
@@ -115,13 +114,14 @@ def _client():
 def _fusionar_palabras(lista_local, lista_spanlp, lista_badwords):
     """
     Une resultados de lista manual, spanlp y badwords_service evitando duplicados.
-    Marca la fuente de detección.
+    Retorna solo la palabra limpia (sin etiquetas ni sufijos).
     """
     fusion = {}
 
-    def limpiar_tag(w):
+    def limpiar_tag(w: str) -> str:
         return (
             w.replace("(es)", "")
+            .replace("(en)", "")
             .replace("(global)", "")
             .replace("[lista]", "")
             .replace("[spanlp]", "")
@@ -129,18 +129,15 @@ def _fusionar_palabras(lista_local, lista_spanlp, lista_badwords):
             .strip()
         )
 
-    def agregar(words, tag):
+    def agregar(words: List[str]):
         for w in words:
             wn = _normalize(limpiar_tag(w))
-            if wn in fusion:
-                if tag not in fusion[wn]:
-                    fusion[wn] += f" {tag}"
-            else:
-                fusion[wn] = f"{limpiar_tag(w)} {tag}"
+            if wn not in fusion:   # evita duplicados
+                fusion[wn] = limpiar_tag(w)
 
-    agregar(lista_local, "[lista]")
-    agregar(lista_spanlp, "[spanlp]")
-    agregar(lista_badwords, "[badwords]")
+    agregar(lista_local)
+    agregar(lista_spanlp)
+    agregar(lista_badwords)
 
     return list(fusion.values())
 
@@ -402,7 +399,7 @@ def _calcular_nivel_problema(palabras_encontradas: List[str]) -> str:
 
 # --- Helpers de moderación avanzada ---
 
-# Umbrales (puedes ajustar estos valores si lo necesitas)
+# Umbrales (Valores ajustables)
 TH_SUS = 0.3
 TH_PROB = 0.6
 

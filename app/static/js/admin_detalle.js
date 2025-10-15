@@ -95,7 +95,7 @@ function updateButtonsState(activeAction) {
         btnReject.classList.add('inactive');
         
         message.className = 'action-message accepted';
-        message.innerHTML = `Aceptado el ${currentDate}`; // Sin emoji
+        message.innerHTML = `Aceptado el ${currentDate}`;
         statusSection.appendChild(message); // Se añade al contenedor principal, debajo de los botones
         
         if (adminStatus) {
@@ -106,7 +106,7 @@ function updateButtonsState(activeAction) {
         btnReject.classList.add('active');
 
         message.className = 'action-message rejected';
-        message.innerHTML = `Rechazado el ${currentDate}`; // Sin emoji
+        message.innerHTML = `Rechazado el ${currentDate}`; 
         statusSection.appendChild(message); // Se añade al contenedor principal, debajo de los botones
         
         if (adminStatus) {

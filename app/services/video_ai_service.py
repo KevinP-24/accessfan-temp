@@ -13,6 +13,7 @@ from app.services.text_detection_service import analizar_texto_en_video
 logger = logging.getLogger(__name__)
 
 _GOOGLE_CRED_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+USE_VERTEX_AI = os.getenv("USE_VERTEX_AI", "false").lower() in ("true", "1", "yes")
 
 def _get_client():
     try:
@@ -37,20 +38,58 @@ def _client():
 
 def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
     """
-    Analiza un video en GCS y retorna datos formateados para el modelo Video.
-    Incluye etiquetas, contenido explícito, logotipos, objetos detectados y texto.
+    Analiza un video en GCS unificando Gemini (Vertex AI) y Video Intelligence.
+    Retorna un dict consolidado con:
+      - etiquetas, objetos, logos, texto, alertas visuales
+      - puntaje_confianza, estado_visual, estado_texto, veredicto_ia
     """
     start_time = time.time()
-    
+    logger.info(f"[AI] Iniciando análisis combinado para: {gcs_uri}")
+
+    use_vertex = os.getenv("USE_VERTEX_AI", "false").lower() in ("true", "1", "yes")
+
+    # === BLOQUE 1: Inicialización de variables ===
+    gemini_resultado, objetos_gemini, texto_gemini, alertas_gemini = {}, [], "", []
+    alertas_visual = []
+
+    # === BLOQUE 2: Análisis con Gemini (Vertex AI) ===
+    if use_vertex:
+        try:
+            from app.services.vertex_ai_video_service import analizar_video_gemini
+            import json, re
+            logger.info("[GEMINI] Ejecutando análisis Vertex AI...")
+
+            gemini_resultado = analizar_video_gemini(gcs_uri)
+            raw = gemini_resultado.get("raw_text", "")
+
+            # Limpiar formato ```json
+            if raw:
+                clean = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
+                try:
+                    gemini_resultado = json.loads(clean)
+                except Exception:
+                    logger.warning("[GEMINI] No se pudo parsear JSON limpio, usando texto crudo.")
+
+            objetos_gemini = gemini_resultado.get("objetos_detectados", [])
+            texto_gemini = (
+                ", ".join(gemini_resultado.get("texto_detectado", []))
+                if isinstance(gemini_resultado.get("texto_detectado"), list)
+                else gemini_resultado.get("texto_detectado", "")
+            )
+            alertas_gemini = gemini_resultado.get("alertas", [])
+            logger.info(f"[GEMINI] {len(objetos_gemini)} objetos | alertas={alertas_gemini}")
+
+        except Exception as e:
+            logger.warning(f"[GEMINI] Error: {e}. Continuando con Video Intelligence.")
+            gemini_resultado = {}
+
+    # === BLOQUE 3: Análisis con Video Intelligence ===
     try:
-        logger.info(f"Iniciando análisis de video para: {gcs_uri}")
-        
-        # --- Features habilitadas ---
         features = [
             vi.Feature.LABEL_DETECTION,
             vi.Feature.EXPLICIT_CONTENT_DETECTION,
             vi.Feature.LOGO_RECOGNITION,
-            vi.Feature.OBJECT_TRACKING, 
+            vi.Feature.OBJECT_TRACKING,
             vi.Feature.SHOT_CHANGE_DETECTION,
         ]
         video_context = vi.VideoContext(
@@ -64,67 +103,113 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
         )
         result = operation.result(timeout=timeout_sec)
         annotation_result = result.annotation_results[0]
-        
-        # --- Procesamiento ---
+
         etiquetas_en = _procesar_etiquetas(annotation_result)
         contenido_explicito_en = _procesar_contenido_explicito(annotation_result)
-        logotipos_obj_en = _procesar_logotipos(annotation_result) 
-        logotipos_en = ', '.join([item['logo'] for item in logotipos_obj_en])
-        objetos_detectados = _procesar_objetos(annotation_result)  # 👈 nuevo
-        
-        objetos_detectados = _procesar_objetos(annotation_result)
-        logger.info(f"[VI] Objetos detectados totales: {len(objetos_detectados)}")
+        logotipos_obj_en = _procesar_logotipos(annotation_result)
+        logotipos_en = ", ".join([item["logo"] for item in logotipos_obj_en])
+        objetos_detectados_vi = _procesar_objetos(annotation_result)
+        logger.info(f"[VI] Objetos detectados: {len(objetos_detectados_vi)}")
 
-        # --- Traducción ---
-        logger.info("Traduciendo resultados del análisis de IA...")
-        try:
-            etiquetas_es = traducir_etiquetas(etiquetas_en, 'es')
-            contenido_explicito_es = traducir_contenido_explicito(contenido_explicito_en, 'es')
-            logotipos_es = traducir_logos(logotipos_en, 'es')
-        except Exception as e:
-            logger.warning(f"Error en traducción, usando textos originales: {str(e)}")
-            etiquetas_es = etiquetas_en
-            contenido_explicito_es = contenido_explicito_en
-            logotipos_es = logotipos_en
-
-        # --- Detección de texto ---
-        logger.info("Analizando texto en frames del video...")
-        try:
-            resultados_texto = analizar_texto_en_video(gcs_uri, video_id=None)
-        except Exception as e:
-            logger.warning(f"Error en detección de texto: {str(e)}")
-            resultados_texto = { 
-                'texto_detectado': '', 
-                'palabras_problematicas': '', 
-                'nivel_problema': 'error', 
-                'frames_analizados': 0 
-            }
-
-        # --- Construcción de resultados finales ---
-        tiempo_total = time.time() - start_time
-        datos_procesados = {
-            'etiquetas': etiquetas_es,
-            'contenido_explicito': contenido_explicito_es,
-            'logotipos': logotipos_es,
-            'objetos_detectados': objetos_detectados,  # 👈 agregado
-            'puntaje_confianza': _calcular_puntaje_confianza(annotation_result),
-            'tiempo_procesamiento': round(tiempo_total, 2),
-            'texto_detectado': resultados_texto['texto_detectado'],
-            'palabras_problematicas': resultados_texto['palabras_problematicas'], 
-            'nivel_problema_texto': resultados_texto['nivel_problema'],
-            'frames_texto_analizados': resultados_texto['frames_analizados'],
-            # originales
-            'etiquetas_original': etiquetas_en,
-            'contenido_explicito_original': contenido_explicito_en,
-            'logotipos_original': logotipos_en
-        }
-        
-        logger.info(f"Análisis completado en {tiempo_total:.2f} segundos")
-        return datos_procesados
-        
     except Exception as e:
-        logger.error(f"Error fatal en analizar_video_completo: {e}")
+        logger.error(f"[VI] Error analizando video con Video Intelligence: {e}")
         raise
+
+    # === BLOQUE 4: Fusionar Gemini + VideoIntelligence ===
+    objetos_detectados = objetos_detectados_vi or []
+    if objetos_gemini:
+        objetos_detectados.extend(objetos_gemini)
+
+    # Detectar alertas visuales (armas, violencia, etc.)
+    for obj in objetos_detectados:
+        label = str(obj.get("label", "")).lower()
+        if "arma" in label or "cuchillo" in label or "pistola" in label:
+            alertas_visual.append(label)
+    alertas_visual.extend([a for a in alertas_gemini if a not in alertas_visual])
+
+    logger.info(f"[MERGE] Total objetos fusionados={len(objetos_detectados)} | alertas_visual={alertas_visual}")
+
+    # === BLOQUE 5: Traducciones ===
+    try:
+        etiquetas_es = traducir_etiquetas(etiquetas_en, "es")
+        contenido_explicito_es = traducir_contenido_explicito(contenido_explicito_en, "es")
+        logotipos_es = traducir_logos(logotipos_en, "es")
+    except Exception as e:
+        logger.warning(f"[TRAD] Error traduciendo: {e}")
+        etiquetas_es, contenido_explicito_es, logotipos_es = etiquetas_en, contenido_explicito_en, logotipos_en
+
+    # === BLOQUE 6: OCR / texto en video ===
+    try:
+        resultados_texto = analizar_texto_en_video(gcs_uri, video_id=None)
+    except Exception as e:
+        logger.warning(f"[OCR] Error en detección de texto: {e}")
+        resultados_texto = {
+            "texto_detectado": "",
+            "palabras_problematicas": "",
+            "nivel_problema": "error",
+            "frames_analizados": 0,
+        }
+
+    texto_final = resultados_texto.get("texto_detectado", "")
+    if texto_gemini:
+        texto_final = f"{texto_final}, {texto_gemini}".strip(", ")
+
+    palabras_problematicas = resultados_texto.get("palabras_problematicas", "")
+    nivel_problema = resultados_texto.get("nivel_problema", "bajo")
+
+    # === BLOQUE 7: Calcular puntaje de seguridad ===
+    from app.services.video_ai_service import _calcular_puntaje_confianza  # asegurar import local
+    puntaje = _calcular_puntaje_confianza(annotation_result, objetos_detectados, alertas_visual)
+
+    # Penalización adicional si alertas_visual
+    if alertas_visual:
+        puntaje = max(0.0, puntaje * 0.7)
+        logger.warning(f"[CONF] Penalización adicional por alertas visuales: {alertas_visual}")
+
+    # === BLOQUE 8: Estados y veredicto IA ===
+    estado_visual, estado_texto, veredicto_ia = "Seguro", "Limpio", "Seguro"
+
+    if alertas_visual or puntaje < 0.6:
+        estado_visual = "Amenazante" if alertas_visual else "Riesgoso"
+
+    if nivel_problema in ("alto", "error"):
+        estado_texto = "Crítico"
+    elif nivel_problema == "medio":
+        estado_texto = "Advertencia"
+
+    if estado_visual in ("Amenazante", "Riesgoso") or estado_texto in ("Crítico", "Advertencia"):
+        veredicto_ia = "Riesgoso"
+    if "arma" in palabras_problematicas.lower():
+        veredicto_ia = "Amenazante"
+
+    # === BLOQUE 9: Construcción de respuesta final ===
+    tiempo_total = time.time() - start_time
+    datos_procesados = {
+        "etiquetas": etiquetas_es,
+        "contenido_explicito": "Gemini + VideoIntelligence" if use_vertex else contenido_explicito_es,
+        "logotipos": logotipos_es,
+        "objetos_detectados": objetos_detectados,
+        "alertas_visual": list(set(alertas_visual)),
+        "puntaje_confianza": round(puntaje, 3),
+        "estado_visual": estado_visual,
+        "estado_texto": estado_texto,
+        "veredicto_ia": veredicto_ia,
+        "tiempo_procesamiento": round(tiempo_total, 2),
+        "texto_detectado": texto_final,
+        "palabras_problematicas": palabras_problematicas,
+        "nivel_problema_texto": nivel_problema,
+        "frames_texto_analizados": resultados_texto["frames_analizados"],
+        # originales
+        "etiquetas_original": etiquetas_en,
+        "contenido_explicito_original": contenido_explicito_en,
+        "logotipos_original": logotipos_en,
+    }
+
+    logger.info(
+        f"[PIPELINE] Finalizado en {tiempo_total:.2f}s | Visual={estado_visual} | Texto={estado_texto} "
+        f"| Veredicto={veredicto_ia} | Puntaje={puntaje:.2f}"
+    )
+    return datos_procesados
 
 def _procesar_etiquetas(annotation_result) -> str:
     """
@@ -260,27 +345,23 @@ def _procesar_logotipos(annotation_result) -> List[Dict]:
         )
         return []
 
-def _calcular_puntaje_confianza(annotation_result, objetos_detectados=None) -> float:
+def _calcular_puntaje_confianza(annotation_result, objetos_detectados: List[Dict] = None, alertas_visual: List[str] = None) -> float:
     """
-    Calcula un puntaje general de confianza basado en todos los análisis.
-    - Promedio de confianzas de etiquetas, frames y logos
-    - Penalización si se detectan armas (en objetos o en etiquetas)
+    Calcula un puntaje general de seguridad visual.
+    - Promedia confianzas de etiquetas, frames y logos.
+    - Aplica penalizaciones según detecciones reales de IA (objetos o alertas visuales).
     Retorna valor entre 0.0 y 1.0
     """
     try:
         confianzas = []
 
-        # Confianza de etiquetas (segmentos)
+        # === 1. Confianza base (Video Intelligence) ===
         for label in annotation_result.segment_label_annotations:
             for segment in label.segments:
                 confianzas.append(segment.confidence)
-
-        # Confianza de etiquetas (frames individuales)
         for label in annotation_result.frame_label_annotations:
             for frame in label.frames:
                 confianzas.append(frame.confidence)
-
-        # Confianza de logos
         for logo_annotation in annotation_result.logo_recognition_annotations:
             for track in logo_annotation.tracks:
                 for timestamped_object in track.timestamped_objects:
@@ -288,47 +369,40 @@ def _calcular_puntaje_confianza(annotation_result, objetos_detectados=None) -> f
                         if attribute.name == "logo_confidence":
                             confianzas.append(attribute.confidence)
 
-        # === Puntaje base ===
-        puntaje_base = sum(confianzas) / len(confianzas) if confianzas else 0.0
-
-        # === Ajustes de riesgo visual ===
+        puntaje_base = sum(confianzas) / len(confianzas) if confianzas else 0.75  # valor por defecto medio
         penalty = 0.0
 
-        # --- 1. Revisar objetos detectados ---
+        # === 2. Penalizaciones dinámicas ===
+        # 2.1 Objetos detectados (de Gemini o Video Intelligence)
         if objetos_detectados:
             for obj in objetos_detectados:
-                if obj.get("label") == "arma de fuego":
+                label = str(obj.get("label", "")).lower()
+                if "arma de fuego" in label or "pistola" in label or "revolver" in label:
                     penalty = max(penalty, 0.5)  # -50%
-                    logger.warning(f"[CONF] Penalización: Arma de fuego detectada en objetos -> -50%")
-                elif obj.get("label") == "arma blanca":
+                    logger.warning(f"[CONF] Penalización por detección de arma de fuego: '{label}'")
+                elif "arma blanca" in label or "cuchillo" in label or "navaja" in label:
                     penalty = max(penalty, 0.3)  # -30%
-                    logger.warning(f"[CONF] Penalización: Arma blanca detectada en objetos -> -30%")
+                    logger.warning(f"[CONF] Penalización por detección de arma blanca: '{label}'")
+                elif "arma" in label:
+                    penalty = max(penalty, 0.25)
+                    logger.warning(f"[CONF] Penalización general por objeto tipo arma: '{label}'")
 
-        # --- 2. Revisar etiquetas (por si no hubo objetos trackeados) ---
-        ARMAS_BLANCA_KEYWORDS = {
-            "knife","blade","dagger","machete","sword","cutlass",
-            "cutter","razor","scissors","shears","cutlery","utensil",
-            "kitchen knife","pocket knife","switchblade","box cutter",
-            "x-acto","scalpel","screwdriver","shank","shiv"
-        }
-        ARMAS_FUEGO_KEYWORDS = {
-            "gun","pistol","rifle","firearm","shotgun",
-            "revolver","machine gun","handgun","weapon"
-        }
+        # 2.2 Alertas visuales explícitas del análisis de Gemini
+        if alertas_visual:
+            for alerta in alertas_visual:
+                alerta_lower = alerta.lower()
+                if "arma" in alerta_lower:
+                    penalty = max(penalty, 0.4)
+                    logger.warning(f"[CONF] Penalización por alerta visual de IA: '{alerta_lower}'")
+                elif "sangre" in alerta_lower or "violencia" in alerta_lower:
+                    penalty = max(penalty, 0.35)
+                elif "amenaza" in alerta_lower:
+                    penalty = max(penalty, 0.3)
 
-        for label in annotation_result.segment_label_annotations:
-            l = label.entity.description.lower().strip()
-            if l in ARMAS_FUEGO_KEYWORDS:
-                penalty = max(penalty, 0.5)
-                logger.warning(f"[CONF] Penalización: Arma de fuego detectada en etiquetas ('{l}') -> -50%")
-            elif l in ARMAS_BLANCA_KEYWORDS:
-                penalty = max(penalty, 0.3)
-                logger.warning(f"[CONF] Penalización: Arma blanca detectada en etiquetas ('{l}') -> -30%")
-
-        # === Puntaje final ajustado ===
+        # === 3. Puntaje final ===
         puntaje_final = max(0.0, puntaje_base * (1 - penalty))
-
         logger.info(f"[CONF] Puntaje base={puntaje_base:.3f} | Penalización={penalty*100:.0f}% | Final={puntaje_final:.3f}")
+
         return round(puntaje_final, 3)
 
     except Exception as e:

@@ -111,65 +111,70 @@ class Video(db.Model):
             raise ValueError("Debe proporcionarse una razón para rechazar el video")
         self.actualizar_estado_admin('rechazado', razon, admin_user)
 
+
     # --- Métodos de cálculo para la UI ---
     def get_moderation_status(self):
         """
-        Devuelve el estado de moderación del video.
-        Ahora también marca como 'Riesgo Visual' si se detecta un arma,
-        aunque Google haya devuelto 'Seguro'.
+        Devuelve el estado de moderación con texto, color y razón.
+        Se calcula dinámicamente según puntaje, armas y contenido explícito.
         """
         try:
             objs = json.loads(self.objetos_detectados) if self.objetos_detectados else []
         except Exception:
             objs = []
 
-        # --- Revisión por armas detectadas ---
-        if any(o.get("es_arma") for o in objs):
-            return {'text': 'Riesgo Visual: Arma detectada', 'color': 'danger'}
+        puntaje = float(self.puntaje_confianza or 0)
+        nivel_texto = (self.nivel_problema_texto or "").lower()
+        ce = (self.contenido_explicito or "").lower()
 
-        # --- Revisión por contenido explícito (Google) ---
-        if self.contenido_explicito in ['Explícito', 'Posible']:
-            return {'text': 'Revisión Urgente (Visual)', 'color': 'danger'}
+        tiene_arma = any("arma" in (o.get("label", "").lower()) for o in objs)
+        reason = None
 
-        # --- Revisión por texto ---
-        if self.nivel_problema_texto == 'problematico':
-            return {'text': 'Revisión Urgente (Texto)', 'color': 'danger'}
-        if self.nivel_problema_texto == 'sospechoso':
-            return {'text': 'Revisión Necesaria (Texto)', 'color': 'warning'}
+        # Procesando / error
+        if self.estado_ia == "procesando":
+            return {"text": "Procesando...", "color": "info"}
+        if self.estado_ia == "error":
+            return {"text": "Error en análisis", "color": "secondary"}
 
-        # --- IA completada y sin riesgos ---
-        if self.estado_ia == 'completado':
-            return {'text': 'Seguro', 'color': 'success'}
-        if self.estado_ia == 'procesando':
-            return {'text': 'Procesando...', 'color': 'info'}
-        if self.estado_ia == 'error':
-            return {'text': 'Error de Análisis', 'color': 'secondary'}
+        # Amenazante
+        if tiene_arma:
+            reason = "Arma detectada"
+            return {"text": "Amenazante", "color": "danger", "reason": reason}
+        if ce in ("explícito", "explicit"):
+            reason = "Contenido explícito"
+            return {"text": "Amenazante", "color": "danger", "reason": reason}
+        if puntaje < 0.4:
+            reason = "Puntaje muy bajo"
+            return {"text": "Amenazante", "color": "danger", "reason": reason}
 
-        return {'text': 'Pendiente', 'color': 'secondary'}
+        # Riesgoso
+        if puntaje < 0.7 or nivel_texto in ("problematico", "sospechoso", "medio"):
+            reason = "Riesgo moderado"
+            return {"text": "Riesgoso", "color": "warning", "reason": reason}
+
+        # Seguro
+        return {"text": "Seguro", "color": "success", "reason": None}
 
 
     def get_safety_score(self):
         """
-        Calcula un puntaje de seguridad considerando:
-        - Confianza global
-        - Contenido explícito de Google
-        - Texto problemático
-        - Penalización extra si se detectan armas
+        Calcula un puntaje de seguridad a partir de los factores almacenados.
+        Considera IA visual, texto y detección de armas.
         """
         score = (self.puntaje_confianza or 0) * 100
 
-        # Penalización por contenido explícito de Google
-        if self.contenido_explicito == 'Explícito':
+        # Penalización por contenido explícito
+        ce = (self.contenido_explicito or "").lower()
+        if ce in ["explicit", "explícito"]:
             score -= 40
-        elif self.contenido_explicito == 'Posible':
+        elif ce in ["possible", "posible"]:
             score -= 20
-        elif self.contenido_explicito == 'Dudoso':
-            score -= 10
 
         # Penalización por texto
-        if self.nivel_problema_texto == 'problematico':
+        nivel = (self.nivel_problema_texto or "").lower()
+        if nivel == "problematico":
             score -= 30
-        elif self.nivel_problema_texto == 'sospechoso':
+        elif nivel == "sospechoso":
             score -= 15
 
         # Penalización por armas detectadas
@@ -177,23 +182,21 @@ class Video(db.Model):
             objs = json.loads(self.objetos_detectados) if self.objetos_detectados else []
         except Exception:
             objs = []
-
-        if any(o.get("label") == "arma de fuego" for o in objs):
+        if any("arma de fuego" in o.get("label", "").lower() for o in objs):
             score -= 50
-        elif any(o.get("label") == "arma blanca" for o in objs):
+        elif any("arma blanca" in o.get("label", "").lower() for o in objs):
             score -= 30
 
-        final_score = max(0, round(score))
-        color = 'success'
-        if final_score < 75:
-            color = 'warning'
-        if final_score < 50:
-            color = 'danger'
+        final = max(0, round(score))
+        color = "success"
+        if final < 75:
+            color = "warning"
+        if final < 50:
+            color = "danger"
 
-        return {'score': final_score, 'color': color}
+        return {"score": final, "color": color}
 
     # --- Métodos de representación y serialización ---
-    
     def to_dict(self):
         return {
             'id': self.id,

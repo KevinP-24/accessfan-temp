@@ -1,9 +1,15 @@
+# app/services/gcs_service.py
 import os
 import mimetypes
 from datetime import timedelta, datetime
 from google.cloud import storage
 from google.oauth2 import service_account
 import json
+from google.auth import default, iam
+from google.auth.iam import Signer
+from google.auth.transport import requests
+from google.auth import default as auth_default
+from google.auth.transport.requests import Request
 from app.services.logging_service import audit_logger
 import logging
 logger = logging.getLogger(__name__)
@@ -253,42 +259,83 @@ def subir_a_gcs(file_obj, filename, socio=None, descripcion=None):
         )
         raise
 
-def obtener_url_firmada(filename, horas=1, method="GET"):
+def obtener_url_firmada(filename: str, horas: int = 1, method: str = "GET"):
     """
-    Genera una URL firmada v4 para el objeto 'filename' válido por 'horas' horas.
+    Genera una URL firmada v4 para un objeto en GCS.
+    - Local (JSON key con private_key): firma directa.
+    - Cloud Run (ADC sin private_key): usa IAM SignBlob vía access_token + service_account_email.
+    - Fallbacks: public_url o gs:// si algo falla.
+    Retorna: dict { "url": str|None, "mode": "PRIVATE_KEY"|"IAM"|"PUBLIC_FALLBACK"|"NOT_FOUND"|"ERROR" }
     """
+    blob = None
     try:
-        logger.info(f"[SIGNED_URL] Solicitud de URL firmada para '{filename}' "
-                    f"(horas={horas}, method={method})")
+        logger.info(f"[SIGNED_URL] 🔐 Solicitud | objeto='{filename}', horas={horas}, método={method}")
 
         bucket = _get_bucket()
         blob = bucket.blob(filename)
 
-        # Verificar existencia del blob antes de firmar
-        if not blob.exists():
-            logger.error(f"[SIGNED_URL] El objeto '{filename}' no existe en el bucket '{BUCKET_NAME}'")
-        else:
-            blob.reload()
-            logger.info(f"[SIGNED_URL] Objeto '{filename}' encontrado. "
-                        f"Content-Type={blob.content_type}, Metadata={blob.metadata}")
+        # existencia (best-effort, si falla seguimos e intentamos firmar igual)
+        try:
+            if not blob.exists():
+                logger.error(f"[SIGNED_URL] ❌ No existe '{filename}' en '{BUCKET_NAME}'")
+                return {"url": None, "mode": "NOT_FOUND"}
+        except Exception as e:
+            logger.warning(f"[SIGNED_URL] Aviso al verificar existencia: {e}")
 
-        signed_url = blob.generate_signed_url(
+        # 1) Obtener credenciales por defecto y refrescarlas (necesitamos un access_token en Cloud Run)
+        creds, _ = auth_default()
+        try:
+            creds.refresh(Request())
+        except Exception as e:
+            logger.warning(f"[SIGNED_URL] No se pudo refrescar token ADC: {e}")
+
+        # 2) Si la credencial puede firmar localmente (típico JSON key local) => firma directa
+        sign_bytes = getattr(creds, "sign_bytes", None)
+        if callable(sign_bytes):
+            logger.info("[SIGNED_URL] 🔑 Usando private_key (firma local)")
+            url = blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(hours=horas),
+                method=method,
+            )
+            return {"url": url, "mode": "PRIVATE_KEY"}
+
+        # 3) Cloud Run / ADC sin private_key => IAM SignBlob (via google-cloud-storage)
+        #    Necesitamos: service_account_email + access_token
+        sa_email = getattr(creds, "service_account_email", None) or os.getenv("GCS_SIGNER_EMAIL")
+        access_token = getattr(creds, "token", None)
+
+        if not sa_email:
+            logger.warning("[SIGNED_URL] No se detectó service_account_email en ADC; define GCS_SIGNER_EMAIL si es necesario.")
+
+        logger.info("[SIGNED_URL] 🔐 Usando IAM SignBlob (service_account_email + access_token)")
+        url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=horas),
             method=method,
+            service_account_email=sa_email,
+            access_token=access_token,
         )
-
-        logger.info(f"[SIGNED_URL] URL firmada generada para '{filename}': {signed_url}")
-
-        return signed_url
+        return {"url": url, "mode": "IAM"}
 
     except Exception as e:
-        logger.error(f"[SIGNED_URL] Error generando URL firmada para '{filename}': {e}", exc_info=True)
+        logger.error(f"[SIGNED_URL] ❌ Error generando URL firmada para '{filename}': {e}", exc_info=True)
         audit_logger.log_error(
             error_type="GCS_SIGNED_URL_ERROR",
-            message=f"Error generando URL firmada para {filename}: {str(e)}"
+            message=f"Error generando URL firmada para {filename}: {str(e)}",
+            details={"bucket": BUCKET_NAME, "filename": filename}
         )
-        raise
+        # Fallbacks amables
+        try:
+            if blob:
+                # si el bucket permite acceso público, al menos devolvemos la public_url
+                if blob.public_url:
+                    return {"url": blob.public_url, "mode": "PUBLIC_FALLBACK"}
+                # último recurso: esquema gs://
+                return {"url": f"gs://{BUCKET_NAME}/{filename}", "mode": "PUBLIC_FALLBACK"}
+        except Exception:
+            pass
+        return {"url": None, "mode": "ERROR"}
 
 def _rehydrate_from_gcs(videos_list, id_counter, prefix="uploads/"):
     """

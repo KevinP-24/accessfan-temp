@@ -439,22 +439,21 @@ def signed_url_for_video(video_id: int):
         )
         return jsonify({"error": "Video not found"}), 404
 
-    # Generar URL firmada usando el objeto de GCS
     if not video.gcs_object_name:
-        return jsonify({"url": video.video_url}), 200
+        return jsonify({"url": video.video_url, "mode": "DIRECT"}), 200
     
     try:
-        signed_url = obtener_url_firmada(video.gcs_object_name, horas=2)
-        
-        # LOGGING ESTRUCTURADO: Registrar generación de URL firmada
+        info = obtener_url_firmada(video.gcs_object_name, horas=2)
+
+        # LOGGING ESTRUCTURADO
         audit_logger.log_admin_action(
             action='generate_signed_url',
             video_id=video_id,
             admin_user=admin_user,
-            details={'gcs_object': video.gcs_object_name}
+            details={'gcs_object': video.gcs_object_name, 'mode': info.get("mode")}
         )
         
-        return jsonify({"url": signed_url}), 200
+        return jsonify(info), 200  # ya incluye {"url":..., "mode":...}
         
     except Exception as e:
         audit_logger.log_error(

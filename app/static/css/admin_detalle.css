@@ -304,3 +304,21 @@ video {
 .status-warning { background: #FFC107; }   /* amarillo */
 .status-danger  { background: #f44336; }   /* rojo */
 .status-info    { background: #2196F3; }   /* azul */
+
+.status-badge.status-accepted {
+  background-color: #27ae60;
+  color: white;
+}
+.status-badge.status-pending {
+  background-color: #f39c12;
+  color: white;
+}
+.status-badge.status-rejected {
+  background-color: #e74c3c;
+  color: white;
+}
+.badge-verdict {
+  font-weight: bold;
+  padding: 6px 12px;
+  border-radius: 8px;
+}

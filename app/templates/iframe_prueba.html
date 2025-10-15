@@ -31,7 +31,6 @@
 
         iframe.onload = function() {
             iframe.contentWindow.postMessage(datosCompletosParaIframe, window.location.origin);
-            console.log("Datos enviados al iframe (con token real):", datosCompletosParaIframe);
         };
     </script>
     {% include '_footer.html' %}
