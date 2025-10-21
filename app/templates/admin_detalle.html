@@ -26,53 +26,56 @@
                 <div class="info-label"><i class="fas fa-file"></i> Archivo</div>
                 <div class="info-value">{{ video.nombre_archivo }}</div>
             </div>
+
+            <!-- Estado IA centralizado -->
             <div class="info-card">
                 <div class="info-label"><i class="fas fa-robot"></i> Estado IA</div>
                 <div class="info-value">
-                    {% if video.estado_ia == 'completado' %}<span class="status-badge status-completed">Análisis completado</span>
-                    {% elif video.estado_ia == 'procesando' %}<span class="status-badge status-processing">Procesando...</span>
-                    {% elif video.estado_ia == 'error' %}<span class="status-badge status-error">Error en análisis</span>
-                    {% else %}<span class="status-badge status-pending">Pendiente</span>
-                    {% endif %}
+                    {% set ia_status = video.get_moderation_status() %}
+                    <span class="status-badge status-{{ ia_status.color }}">{{ ia_status.text }}</span>
                 </div>
             </div>
+
+            <!-- Estado administrativo -->
             <div class="info-card">
                 <div class="info-label"><i class="fas fa-user-check"></i> Estado administrativo</div>
                 <div class="info-value" id="admin-status">
-                    {% if video.estado == 'aceptado' %}<span class="status-badge status-accepted">Aceptado</span>
-                    {% elif video.estado == 'rechazado' %}<span class="status-badge status-rejected">Rechazado</span>
-                    {% else %}<span class="status-badge status-pending">Pendiente de revisión</span>
+                    {% if video.estado == 'aceptado' %}
+                        <span class="status-badge status-accepted">Aceptado</span>
+                    {% elif video.estado == 'rechazado' %}
+                        <span class="status-badge status-rejected">Rechazado</span>
+                    {% else %}
+                        <span class="status-badge status-pending">Pendiente de revisión</span>
                     {% endif %}
                 </div>
             </div>
         </div>
 
+        <!-- Reproductor -->
         <div class="video-wrapper">
             <video id="player" data-video-id="{{ video.id }}" controls src="{{ signed_url or video.video_url }}"></video>
         </div>
 
+        <!-- Descripción -->
         {% if video.descripcion and video.descripcion != 'Sin descripción proporcionada' %}
         <div class="description-section slide-in">
             <div class="section-title"><i class="fas fa-file-alt"></i> Descripción</div>
-            <div class="description-content">
-                {{ video.descripcion }}
-            </div>
+            <div class="description-content">{{ video.descripcion }}</div>
         </div>
         {% endif %}
 
-        <div class="analysis-section slide-in">
-
-
+        <!-- Análisis IA -->
         <div class="analysis-section slide-in">
             <div class="section-title"><i class="fas fa-brain"></i> Análisis de inteligencia artificial</div>
-            
+
             {% if video.estado_ia == 'completado' %}
-            
+                {% set visual_status = video.get_moderation_status() %}
+                {% set safety = video.get_safety_score() %}
+
                 <div class="analysis-item-full moderation-summary">
                     <div class="summary-box">
                         <div class="summary-title"><i class="fas fa-eye"></i> Análisis Visual</div>
                         <div class="summary-value">
-                            {% set visual_status = video.get_moderation_status() %}
                             <span class="status-badge status-{{ visual_status.color }}">{{ visual_status.text }}</span>
                         </div>
                     </div>
@@ -80,28 +83,29 @@
                         <div class="summary-title"><i class="fas fa-spell-check"></i> Análisis de Texto</div>
                         <div class="summary-value">
                             {% if video.nivel_problema_texto == 'problematico' %}
-                                <span class="status-badge status-rejected">Problemático</span>
+                                <span class="status-badge status-danger">Problemático</span>
                             {% elif video.nivel_problema_texto == 'sospechoso' %}
-                                <span class="status-badge status-pending">Sospechoso</span>
+                                <span class="status-badge status-warning">Sospechoso</span>
                             {% else %}
-                                <span class="status-badge status-accepted">Limpio</span>
+                                <span class="status-badge status-success">Limpio</span>
                             {% endif %}
                         </div>
                     </div>
                     <div class="verdict">
-                        Veredicto IA: 
-                        {% set status = video.get_moderation_status() %}
-                        <span class="badge-verdict status-{{ status.color }}">{{ status.text }}</span>
+                        Veredicto IA:
+                        <span class="badge-verdict status-{{ visual_status.color }}">{{ visual_status.text }}</span>
+                        {% if visual_status.reason %}
+                            <small class="verdict-reason">({{ visual_status.reason }})</small>
+                        {% endif %}
                     </div>
                 </div>
 
+                <!-- Detalles secundarios -->
                 <div class="analysis-grid" style="margin-top: 1.5rem;">
-
                     <div class="analysis-item-full">
                         <div class="analysis-label"><i class="fas fa-shield-virus"></i> Puntaje de Seguridad</div>
                         <div class="analysis-value">
                             <div class="confidence-bar">
-                                {% set safety = video.get_safety_score() %}
                                 <div class="confidence-fill confidence-fill-{{ safety.color }}" style="width: {{ safety.score }}%"></div>
                                 <span class="confidence-text">{{ safety.score }}%</span>
                             </div>
@@ -142,15 +146,17 @@
                         <div class="analysis-label"><i class="fas fa-copyright"></i> Logotipos</div>
                         <div class="analysis-value">
                             {% if video.logotipos %}
-                                <div class="tags-container">  {% for logo in video.logotipos.split(',') %}
-                                        <span class="tag">{{ logo.strip() }}</span> {% endfor %}
+                                <div class="tags-container">
+                                    {% for logo in video.logotipos.split(',') %}
+                                        <span class="tag">{{ logo.strip() }}</span>
+                                    {% endfor %}
                                 </div>
                             {% else %}
                                 <span class="no-data">No se detectaron logotipos</span>
                             {% endif %}
                         </div>
                     </div>
-                    
+
                     <div class="analysis-item">
                         <div class="analysis-label"><i class="fas fa-clock"></i> Duración</div>
                         <div class="analysis-value">{{ "%.1f"|format(video.duracion|float) }} segundos</div>
@@ -168,11 +174,10 @@
                     </div>
                     {% endif %}
                 </div>
-            
-            {% elif video.estado_ia == 'procesando' %}
-                {% endif %}
+            {% endif %}
         </div>
 
+        <!-- Acciones administrativas -->
         <div class="status-section slide-in" id="admin-actions">
             <div class="action-buttons">
                 <button type="button" class="btn btn-accept" id="btn-accept" data-video-id="{{ video.id }}">
@@ -185,7 +190,9 @@
         </div>
 
         <div style="text-align: center;">
-            <a href="{{ url_for('main.listado_videos') }}" class="back-link"><i class="fas fa-arrow-left"></i> Volver al listado</a>
+            <a href="{{ url_for('main.listado_videos') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Volver al listado
+            </a>
         </div>
     </div>
 

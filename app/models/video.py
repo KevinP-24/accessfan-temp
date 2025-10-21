@@ -8,9 +8,9 @@ class Video(db.Model):
     """
     Modelo de datos para representar un video en la base de datos.
     """
-    
+
     __tablename__ = 'video'
-    
+
     # --- Definición de Columnas ---
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     usuario_id = db.Column(db.Integer, nullable=False)
@@ -30,7 +30,6 @@ class Video(db.Model):
     fecha_subida = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     fecha_procesamiento = db.Column(db.DateTime, nullable=True)
     objetos_detectados = db.Column(db.Text, nullable=True, comment="Lista JSON de objetos detectados en el video")
-    # Campos para detectar texto malicioso
     texto_detectado = db.Column(db.Text, nullable=True, comment="Texto completo extraído del video por Cloud Vision.")
     palabras_problematicas_texto = db.Column(db.Text, nullable=True, comment="Lista de palabras problemáticas encontradas.")
     nivel_problema_texto = db.Column(db.String(20), nullable=True, default='limpio', comment="Clasificación del texto: limpio, sospechoso, problematico, error.")
@@ -40,6 +39,17 @@ class Video(db.Model):
     ESTADOS_ADMIN = ['sin-revisar', 'aceptado', 'rechazado']
     ESTADOS_IA = ['pendiente', 'procesando', 'completado', 'error']
     NIVELES_PROBLEMA_TEXTO = ['limpio', 'sospechoso', 'problematico', 'error']
+
+    # --- Paleta centralizada para el front ---
+    COLOR_MAP = {
+        "completed": "#4CAF50",   # Análisis completado
+        "pending":   "#FFC107",   # Pendiente de revisión
+        "danger":    "#f44336",   # Amenazante / Problemático
+        "accepted":  "#43A047",   # Limpio / aceptado
+        "rejected":  "#e53935",   # Rechazado
+        "processing":"#2196F3",   # Procesando
+        "error":     "#9E9E9E"    # Error o sin datos
+    }
 
     # --- Métodos de Actualización de Estado ---
     def actualizar_estado_admin(self, nuevo_estado, razon=None, admin_user=None):
@@ -59,6 +69,8 @@ class Video(db.Model):
     def actualizar_estado_ia(self, nuevo_estado_ia, datos_ia=None):
         """
         Actualiza el estado del análisis de IA y guarda los resultados en la BD.
+        Conserva la clasificación visual real (explícito / posible / seguro)
+        y evita sobreescribirla con textos genéricos.
         """
         if nuevo_estado_ia not in self.ESTADOS_IA:
             raise ValueError(f"Estado de IA inválido: {nuevo_estado_ia}")
@@ -67,7 +79,12 @@ class Video(db.Model):
         
         if nuevo_estado_ia == 'completado' and datos_ia:
             # === Campos de Video Intelligence ===
-            self.contenido_explicito = datos_ia.get('contenido_explicito', 'No analizado')
+            self.contenido_explicito = (
+                datos_ia.get('contenido_explicito_original')
+                or datos_ia.get('contenido_explicito')
+                or self.contenido_explicito
+                or 'No analizado'
+            )
             self.etiquetas = datos_ia.get('etiquetas', '')
             self.logotipos = datos_ia.get('logotipos', '')
             self.puntaje_confianza = datos_ia.get('puntaje_confianza', 0.0)
@@ -80,10 +97,12 @@ class Video(db.Model):
             except Exception:
                 self.objetos_detectados = "[]"
 
-            # --- 🔴 NUEVO: forzar riesgo visual si hay armas ---
+            # --- 🔴 Mantener la clasificación visual real; no sobrescribirla ---
             try:
                 if any(o.get("es_arma") for o in objetos):
-                    self.contenido_explicito = "Riesgo Visual: Arma detectada"
+                    # Solo agregar anotación si no había clasificación explícita
+                    if not self.contenido_explicito.lower().startswith("explícito"):
+                        self.contenido_explicito = "Riesgo Visual: Arma detectada"
             except Exception:
                 pass
 
@@ -111,50 +130,104 @@ class Video(db.Model):
             raise ValueError("Debe proporcionarse una razón para rechazar el video")
         self.actualizar_estado_admin('rechazado', razon, admin_user)
 
-
-    # --- Métodos de cálculo para la UI ---
     def get_moderation_status(self):
         """
-        Devuelve el estado de moderación con texto, color y razón.
-        Se calcula dinámicamente según puntaje, armas y contenido explícito.
+        Devuelve un resumen visual del análisis de IA para mostrar en el panel admin.
+        NO toma decisiones de negocio, solo interpreta y muestra el resultado
+        recibido del backend de análisis.
         """
         try:
+            # Parseo de objetos detectados (solo para mostrar etiquetas)
             objs = json.loads(self.objetos_detectados) if self.objetos_detectados else []
         except Exception:
             objs = []
 
+        # Variables base normalizadas
         puntaje = float(self.puntaje_confianza or 0)
-        nivel_texto = (self.nivel_problema_texto or "").lower()
-        ce = (self.contenido_explicito or "").lower()
+        nivel_texto = (self.nivel_problema_texto or "").lower().strip()
+        ce = (self.contenido_explicito or "").lower().strip()
 
-        tiene_arma = any("arma" in (o.get("label", "").lower()) for o in objs)
-        reason = None
+        etiquetas_detectadas = [o.get("label", "").lower() for o in objs]
 
-        # Procesando / error
+        # --- Estados de sistema ---
         if self.estado_ia == "procesando":
-            return {"text": "Procesando...", "color": "info"}
+            return {"text": "Procesando...", "color": "info", "reason": None}
         if self.estado_ia == "error":
-            return {"text": "Error en análisis", "color": "secondary"}
+            return {"text": "Error en análisis", "color": "secondary", "reason": None}
 
-        # Amenazante
-        if tiene_arma:
-            reason = "Arma detectada"
-            return {"text": "Amenazante", "color": "danger", "reason": reason}
-        if ce in ("explícito", "explicit"):
-            reason = "Contenido explícito"
-            return {"text": "Amenazante", "color": "danger", "reason": reason}
+        # --- Análisis visual (prioridad de interpretación) ---
+        # Contenido sexual o sugestivo detectado
+        if ce in (
+            "explícito", "explicit", "posible", "possible",
+            "probable", "likely", "muy probable", "very likely"
+        ):
+            if ce in ("posible", "possible"):
+                return {
+                    "text": "Riesgoso",
+                    "color": "warning",
+                    "reason": "Contenido sugerente o semidesnudo"
+                }
+            else:
+                return {
+                    "text": "Amenazante",
+                    "color": "danger",
+                    "reason": "Contenido sexual o explícito"
+                }
+
+        # --- Armas detectadas (ya interpretadas por backend) ---
+        palabras_arma_fuego = [
+            "arma de fuego", "pistola", "revolver", "rifle",
+            "escopeta", "gun", "firearm", "shotgun", "weapon"
+        ]
+        palabras_arma_blanca = [
+            "cuchillo", "navaja", "arma blanca", "knife", "blade",
+            "dagger", "cutlery", "machete", "utensilio", "utensil",
+            "kitchen knife", "kitchen utensil"
+        ]
+
+        if any(p in label for label in etiquetas_detectadas for p in palabras_arma_fuego):
+            return {
+                "text": "Amenazante",
+                "color": "danger",
+                "reason": "Arma de fuego detectada"
+            }
+
+        if any(p in label for label in etiquetas_detectadas for p in palabras_arma_blanca):
+            return {
+                "text": "Riesgoso",
+                "color": "warning",
+                "reason": "Arma blanca detectada"
+            }
+
+        # --- Texto moderación ---
+        if nivel_texto in ("problematico", "problemático"):
+            return {
+                "text": "Riesgoso",
+                "color": "warning",
+                "reason": "Texto problemático detectado"
+            }
+
+        if nivel_texto in ("sospechoso", "medio"):
+            return {
+                "text": "Riesgoso",
+                "color": "warning",
+                "reason": "Texto sospechoso o de riesgo moderado"
+            }
+
+        # --- Puntaje bajo (confianza global) ---
         if puntaje < 0.4:
-            reason = "Puntaje muy bajo"
-            return {"text": "Amenazante", "color": "danger", "reason": reason}
+            return {
+                "text": "Riesgoso",
+                "color": "warning",
+                "reason": "Baja confianza del modelo"
+            }
 
-        # Riesgoso
-        if puntaje < 0.7 or nivel_texto in ("problematico", "sospechoso", "medio"):
-            reason = "Riesgo moderado"
-            return {"text": "Riesgoso", "color": "warning", "reason": reason}
-
-        # Seguro
-        return {"text": "Seguro", "color": "success", "reason": None}
-
+        # --- Por defecto: todo correcto ---
+        return {
+            "text": "Seguro",
+            "color": "success",
+            "reason": None
+        }
 
     def get_safety_score(self):
         """

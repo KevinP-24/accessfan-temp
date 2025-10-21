@@ -120,13 +120,8 @@ def procesar_videos_pendientes(limite: int = 5) -> dict:
 
 def procesar_video_individual(video: Video) -> dict:
     """
-    Procesa un video individual con IA.
-    
-    Args:
-        video (Video): Instancia del modelo Video
-        
-    Returns:
-        dict: Resultado del procesamiento
+    Procesa un video individual con IA y guarda los resultados en la base de datos.
+    Conserva la clasificación visual real (explícito / posible / seguro) y agrega la fuente de IA.
     """
     logger.info(f"Procesando video ID {video.id}: {video.nombre_archivo}")
     audit_logger.log_error(
@@ -136,9 +131,9 @@ def procesar_video_individual(video: Video) -> dict:
         user_id=video.usuario_id,
         details={'nombre_archivo': video.nombre_archivo}
     )
-    
+
     try:
-        # Verificar que el video tenga objeto GCS
+        # --- Validación ---
         if not video.gcs_object_name:
             audit_logger.log_error(
                 error_type="VIDEO_PROCESSOR_MISSING_GCS",
@@ -147,39 +142,47 @@ def procesar_video_individual(video: Video) -> dict:
                 user_id=video.usuario_id
             )
             raise ValueError("Video no tiene gcs_object_name")
-        
-        # Construir URI de GCS
+
+        # --- Construcción de URI GCS ---
         gcs_uri = f"gs://{BUCKET_NAME}/{video.gcs_object_name}"
         logger.debug(f"URI GCS: {gcs_uri}")
-        
-        # Actualizar estado a 'procesando'
+
+        # --- Marcar video como procesando ---
         video.actualizar_estado_ia('procesando')
         db.session.commit()
         logger.info(f"Video {video.id} marcado como 'procesando'")
-        
-        # Llamar al servicio de IA
+
+        # --- Análisis IA ---
         logger.info(f"Iniciando análisis de IA para video {video.id}")
         datos_ia = analizar_video_completo(gcs_uri, timeout_sec=600)
-        
-        # Actualizar video con resultados
+
+        # ✅ Asegurar que se conserva la clasificación visual real
+        if datos_ia.get("contenido_explicito") in (None, "", "No analizado"):
+            datos_ia["contenido_explicito"] = datos_ia.get("contenido_explicito_original", "No analizado")
+
+        # ✅ Registrar fuente del análisis sin sobrescribir el campo real
+        datos_ia["fuente_analisis"] = "Gemini + VideoIntelligence"
+
+        # --- Guardar en BD ---
         video.actualizar_estado_ia('completado', datos_ia)
         db.session.commit()
-        
-        logger.info(f"Video {video.id} procesado exitosamente")
-        logger.info(f"   - Etiquetas: {len(datos_ia['etiquetas'].split(',')) if datos_ia['etiquetas'] else 0}")
-        logger.info(f"   - Contenido: {datos_ia['contenido_explicito']}")
-        logger.info(f"   - Logos: {datos_ia['logotipos'] or 'Ninguno'}")
-        logger.info(f"   - Confianza: {datos_ia['puntaje_confianza']}")
-        logger.info(f"   - Tiempo: {datos_ia['tiempo_procesamiento']}s")
-        
-        # Log procesamiento exitoso con IA análisis
+
+        # --- Logs ---
+        logger.info(f"✅ Video {video.id} procesado exitosamente")
+        logger.info(f"   - Etiquetas: {len(datos_ia['etiquetas'].split(',')) if datos_ia.get('etiquetas') else 0}")
+        logger.info(f"   - Contenido explícito: {datos_ia.get('contenido_explicito')}")
+        logger.info(f"   - Fuente IA: {datos_ia.get('fuente_analisis')}")
+        logger.info(f"   - Confianza: {datos_ia.get('puntaje_confianza')}")
+        logger.info(f"   - Tiempo: {datos_ia.get('tiempo_procesamiento')}s")
+
+        # --- Auditar éxito ---
         audit_logger.log_ia_analysis(
             video_id=video.id,
             estado_ia='completado',
             resultado=datos_ia,
-            tiempo_procesamiento=datos_ia['tiempo_procesamiento']
+            tiempo_procesamiento=datos_ia.get('tiempo_procesamiento', 0)
         )
-        
+
         audit_logger.log_error(
             error_type="VIDEO_PROCESSOR_INDIVIDUAL_SUCCESS",
             message=f"Video {video.id} procesado exitosamente",
@@ -187,30 +190,30 @@ def procesar_video_individual(video: Video) -> dict:
             user_id=video.usuario_id,
             details={
                 'nombre_archivo': video.nombre_archivo,
-                'tiempo_procesamiento': datos_ia['tiempo_procesamiento'],
-                'contenido_explicito': datos_ia['contenido_explicito'],
-                'etiquetas_count': len(datos_ia['etiquetas'].split(',')) if datos_ia['etiquetas'] else 0,
-                'puntaje_confianza': datos_ia['puntaje_confianza']
+                'tiempo_procesamiento': datos_ia.get('tiempo_procesamiento', 0),
+                'contenido_explicito': datos_ia.get('contenido_explicito'),
+                'fuente_analisis': datos_ia.get('fuente_analisis'),
+                'etiquetas_count': len(datos_ia['etiquetas'].split(',')) if datos_ia.get('etiquetas') else 0,
+                'puntaje_confianza': datos_ia.get('puntaje_confianza', 0)
             }
         )
-        
+
         return {
             "exitoso": True,
-            "tiempo": datos_ia['tiempo_procesamiento'],
+            "tiempo": datos_ia.get('tiempo_procesamiento', 0),
             "datos": datos_ia
         }
-        
+
     except Exception as e:
-        logger.error(f"Error procesando video {video.id}: {e}")
-        
-        # Log error de análisis IA
+        logger.error(f"❌ Error procesando video {video.id}: {e}")
+
         audit_logger.log_ia_analysis(
             video_id=video.id,
             estado_ia='error',
             resultado={'error_message': str(e)},
             tiempo_procesamiento=0
         )
-        
+
         audit_logger.log_error(
             error_type="VIDEO_PROCESSOR_INDIVIDUAL_ERROR",
             message=f"Error procesando video {video.id}: {str(e)}",
@@ -218,9 +221,8 @@ def procesar_video_individual(video: Video) -> dict:
             user_id=video.usuario_id,
             details={'nombre_archivo': video.nombre_archivo}
         )
-        
+
         try:
-            # Marcar como error en BD
             video.actualizar_estado_ia('error')
             video.razon_rechazo = f"Error análisis IA: {str(e)}"
             db.session.commit()
@@ -232,11 +234,8 @@ def procesar_video_individual(video: Video) -> dict:
                 video_id=video.id
             )
             db.session.rollback()
-        
-        return {
-            "exitoso": False,
-            "error": str(e)
-        }
+
+        return {"exitoso": False, "error": str(e)}
 
 def reprocesar_video(video_id: int) -> dict:
     """

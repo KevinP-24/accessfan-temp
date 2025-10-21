@@ -270,7 +270,7 @@ BADWORDS = {
         "simio", "mono", "animal", "bestia", "cerdo humano", "puerco", "inmigrante de mierda",
         "extranjero de mierda", "negra sucia", "maricón asqueroso", "lesbiana de mierda",
         "travesti de mierda", "trans de mierda", "marimacho", "nenaza", "poco hombre", "mariposón",
-        "depravado", "sidoso", "enfermo", "apestoso", "feo de mierda"
+        "depravado", "sidoso", "enfermo", "apestoso", "feo de mierda", "forro", "forros" 
     ]
 }
 

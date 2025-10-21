@@ -4,12 +4,16 @@
 :root {
     --primary: #F5522C;
     --primary-light: #f77c5e;
-    --success: #28a745;
-    --success-light: #20c997;
-    --danger: #dc3545;
-    --danger-light: #e55353;
-    --warning: #ffc107;
+    --success: #4CAF50;
+    --success-light: #43A047;
+    --danger: #f44336;
+    --danger-light: #e53935;
+    --warning: #FFC107;
     --warning-light: #ffca2c;
+    --info: #2196F3;
+    --info-light: #64B5F6;
+    --secondary: #9E9E9E;
+    --secondary-light: #BDBDBD;
     --gray: #6c757d;
     --gray-light: #878e95;
     --bg-dark: #1C1C1C;
@@ -184,141 +188,210 @@ video {
 .summary-title { font-size: 0.9rem; color: #aaa; margin-bottom: 0.5rem; }
 .summary-value { font-weight: bold; font-size: 1.1rem; }
 
-.verdict { grid-column: 1 / -1; text-align: center; margin-top: 1rem; padding-top: 1rem; font-size: 1.2rem; border-top: 1px solid #333; }
-.badge-verdict { padding: 0.4rem 0.8rem; border-radius: 20px; font-size: 1rem; }
-.badge-verdict.status-danger { background-color: var(--danger); color: var(--text-light); }
-.badge-verdict.status-warning { background-color: var(--warning); color: var(--bg-black); }
+.verdict {
+    grid-column: 1 / -1;
+    text-align: center;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    font-size: 1.2rem;
+    border-top: 1px solid #333;
+}
+.badge-verdict {
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: capitalize;
+}
 .badge-verdict.status-success { background-color: var(--success); color: var(--text-light); }
-.badge-verdict.status-secondary { background-color: var(--gray); color: var(--text-light); }
+.badge-verdict.status-warning { background-color: var(--warning); color: var(--bg-black); }
+.badge-verdict.status-danger { background-color: var(--danger); color: var(--text-light); }
+.badge-verdict.status-secondary { background-color: var(--secondary); color: var(--text-light); }
 
-.problematic-tag { background-color: #8B0000; color: var(--text-light); padding: 0.3em 0.7em; margin: 0.2em; border-radius: 15px; display: inline-block; font-size: 0.9em; border: 1px solid var(--primary); }
-.context-details { margin-top: 1rem; }
-.context-details summary { cursor: pointer; color: var(--primary); font-weight: 500; }
-.code-block { background-color: #111; border: 1px solid #333; padding: 0.8rem; margin-top: 0.5rem; border-radius: 4px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; color: #ddd; }
-.footnote { text-align: right; font-size: 0.8rem; color: #777; margin-top: 1rem; margin-bottom: 0; }
+.problematic-tag {
+    background: linear-gradient(135deg, rgba(244, 67, 54, 0.4), rgba(229, 57, 53, 0.3));
+    color: var(--text-light);
+    padding: 0.3rem 0.8rem;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    border: 1px solid rgba(244, 67, 54, 0.5);
+    font-weight: 600;
+}
 
-.confidence-bar { position: relative; background: rgba(245, 82, 44, 0.1); height: 20px; border-radius: 15px; overflow: hidden; border: 1px solid rgba(245, 82, 44, 0.3); }
-.confidence-fill { height: 100%; transition: width 0.5s ease-out; border-radius: 15px; }
-.confidence-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: bold; font-size: 0.75rem; color: var(--text-light); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+/* Etiquetas internas restauradas */
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.tag {
+    background: linear-gradient(135deg, rgba(245, 82, 44, 0.25), rgba(247, 124, 94, 0.15));
+    color: var(--text-light);
+    padding: 0.25rem 0.7rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    border: 1px solid rgba(245, 82, 44, 0.4);
+    font-weight: 500;
+}
+
+.confidence-bar {
+    position: relative;
+    background: rgba(245, 82, 44, 0.1);
+    height: 20px;
+    border-radius: 15px;
+    overflow: hidden;
+    border: 1px solid rgba(245, 82, 44, 0.3);
+}
+.confidence-fill {
+    height: 100%;
+    transition: width 0.5s ease-out;
+    border-radius: 15px;
+}
+.confidence-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-weight: bold;
+    font-size: 0.75rem;
+    color: var(--text-light);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
 .confidence-fill-success { background: linear-gradient(90deg, var(--success), var(--success-light)); }
 .confidence-fill-warning { background: linear-gradient(90deg, var(--warning), var(--warning-light)); }
 .confidence-fill-danger { background: linear-gradient(90deg, var(--danger), var(--danger-light)); }
 
 /* ==========================================================================
-   5. ELEMENTOS REUTILIZABLES (BOTONES, ETIQUETAS, INSIGNIAS)
+   5. ESTADOS Y BOTONES CENTRALIZADOS
    ========================================================================== */
-.status-badge { padding: 0.3rem 0.8rem; border-radius: 12px; font-size: 0.9rem; font-weight: 600; display: inline-block; }
-.status-completed, .status-accepted { background: linear-gradient(135deg, var(--success), var(--success-light)); color: var(--text-light); }
-.status-processing { background: linear-gradient(135deg, var(--warning), var(--warning-light)); color: var(--bg-black); }
-.status-error, .status-rejected { background: linear-gradient(135deg, var(--danger), var(--danger-light)); color: var(--text-light); }
-.status-pending { background: linear-gradient(135deg, var(--gray), var(--gray-light)); color: var(--text-light); }
-
-.tags-container { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
-.tag { background: linear-gradient(135deg, rgba(245, 82, 44, 0.2), rgba(247, 124, 94, 0.1)); color: var(--text-light); padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; border: 1px solid rgba(245, 82, 44, 0.3); }
-
-.status-section {
-    margin: 2rem 0;
-    text-align: center; /* Centra los elementos inline-block de adentro */
+.status-badge {
+    display: inline-block;
+    padding: 0.4rem 0.9rem;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-light);
+    text-transform: capitalize;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
-.action-buttons { display: flex; gap: 1rem; justify-content: center; }
-.btn { display: inline-block; border: none; padding: 1rem 2rem; border-radius: 15px; cursor: pointer; font-weight: 700; text-decoration: none; font-size: 1rem; transition: all 0.3s ease; }
-.btn-accept { background: linear-gradient(135deg, var(--success), var(--success-light)); color: var(--text-light); }
-.btn-reject { background: linear-gradient(135deg, var(--danger), var(--danger-light)); color: var(--text-light); }
-.btn:hover { transform: translateY(-3px); }
+.status-success   { background: linear-gradient(135deg, var(--success), var(--success-light)); }
+.status-warning   { background: linear-gradient(135deg, var(--warning), var(--warning-light)); color: var(--bg-black); }
+.status-danger    { background: linear-gradient(135deg, var(--danger), var(--danger-light)); }
+.status-info      { background: linear-gradient(135deg, var(--info), var(--info-light)); }
+.status-secondary { background: linear-gradient(135deg, var(--secondary), var(--secondary-light)); }
 
-.action-message {
+.status-accepted  { background: linear-gradient(135deg, var(--success), var(--success-light)); }
+.status-rejected  { background: linear-gradient(135deg, var(--danger), var(--danger-light)); }
+.status-pending   { background: linear-gradient(135deg, var(--warning), var(--warning-light)); color: var(--bg-black); }
+
+/* BOTONES ADMIN */
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
     margin-top: 2rem;
-    margin-bottom: 2rem;
-    padding: 0.8rem 1.5rem;
-    border-radius: 12px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    display: inline-block; /* Se ajusta al tamaño del texto */
-    animation: actionMessageSlideIn 0.4s ease-out;
 }
-.action-message.accepted { background: linear-gradient(135deg, rgba(40, 167, 69, 0.15), rgba(32, 201, 151, 0.1)); border: 1px solid rgba(40, 167, 69, 0.3); color: #20c997; }
-.action-message.rejected { background: linear-gradient(135deg, rgba(220, 53, 69, 0.15), rgba(229, 83, 83, 0.1)); border: 1px solid rgba(220, 53, 69, 0.3); color: #e55353; }
-.action-message.pending { background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 202, 44, 0.1)); border: 1px solid rgba(255, 193, 7, 0.3); color: #ffc107; }
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 15px;
+    padding: 1rem 2rem;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--text-light);
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+.btn-accept { background: linear-gradient(135deg, var(--success), var(--success-light)); }
+.btn-reject { background: linear-gradient(135deg, var(--danger), var(--danger-light)); }
+.btn-pending { background: linear-gradient(135deg, var(--warning), var(--warning-light)); color: var(--bg-black); }
+.btn:hover { transform: translateY(-3px); filter: brightness(1.1); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; filter: none; }
 
-.back-link { display: inline-block; background: linear-gradient(135deg, #ccc, #999); color: var(--bg-black); padding: 0.6rem 1.2rem; border-radius: 12px; text-decoration: none; font-weight: 600; transition: all 0.3s ease; }
-.back-link:hover { transform: translateY(-2px); }
+/* BOTÓN VOLVER */
+.back-link {
+    display: inline-block;
+    margin-top: 1.5rem; /* separación visual */
+    background: linear-gradient(135deg, #ccc, #999);
+    color: var(--bg-black);
+    padding: 0.6rem 1.2rem;
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+.back-link:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+}
 
 /* ==========================================================================
-   6. ANIMACIONES
+   9. MENSAJES DE ACCIÓN (ACEPTADO / RECHAZADO / PENDIENTE)
+   ========================================================================== */
+/* === Centrado del mensaje de acción (Aceptado / Rechazado / Pendiente) === */
+.action-message {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: inline-block;
+  animation: actionMessageSlideIn 0.4s ease-out;
+  text-align: center;
+}
+
+.status-section {
+  text-align: center; /* centra el contenido del bloque */
+}
+
+/* Verde suave para “Aceptado” */
+.action-message.accepted {
+  background: linear-gradient(135deg, rgba(40, 167, 69, 0.15), rgba(32, 201, 151, 0.1));
+  border: 1px solid rgba(40, 167, 69, 0.3);
+  color: #20c997;
+}
+
+/* Rojo para “Rechazado” */
+.action-message.rejected {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.15), rgba(229, 83, 83, 0.1));
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  color: #e55353;
+}
+
+/* Amarillo para “Pendiente” */
+.action-message.pending {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 202, 44, 0.1));
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
+@keyframes actionMessageSlideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+
+/* ==========================================================================
+   6. ANIMACIONES Y RESPONSIVE
    ========================================================================== */
 .fade-in { animation: fadeIn 0.6s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 .slide-in { animation: slideIn 0.8s ease-out forwards; opacity: 0; }
 @keyframes slideIn { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes actionMessageSlideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ==========================================================================
-   7. DISEÑO RESPONSIVE (AJUSTADO)
-   ========================================================================== */
 @media (max-width: 768px) {
-    body {
-        padding: 1rem;
-    }
-    .container {
-        padding: 1.5rem;
-    }
-    h2 {
-        font-size: 1.8rem;
-    }
-    /* Convierte los grids de 2 columnas a 1 sola columna */
-    .video-info, .moderation-summary {
-        grid-template-columns: 1fr;
-    }
-    /* Apila los botones de acción verticalmente */
-    .action-buttons {
-        flex-direction: column;
-        gap: 0.8rem; /* Reduce el espacio entre botones apilados */
-    }
-    .btn {
-        width: 100%; /* Opcional: hace que los botones ocupen todo el ancho */
-    }
-}
-
-/* ==========================================================================
-   8. AJUSTES FINALES DE ESTILO (A PETICIÓN)
-   ========================================================================== */
-.info-card .info-value .status-badge {
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    font-weight: 700;
-}
-.info-card .info-value .status-pending {
-    background: linear-gradient(135deg, var(--warning), var(--warning-light));
-    color: var(--bg-black);
-}
-
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-weight: bold;
-  color: #fff;
-}
-
-.status-success { background: #4CAF50; }   /* verde */
-.status-warning { background: #FFC107; }   /* amarillo */
-.status-danger  { background: #f44336; }   /* rojo */
-.status-info    { background: #2196F3; }   /* azul */
-
-.status-badge.status-accepted {
-  background-color: #27ae60;
-  color: white;
-}
-.status-badge.status-pending {
-  background-color: #f39c12;
-  color: white;
-}
-.status-badge.status-rejected {
-  background-color: #e74c3c;
-  color: white;
-}
-.badge-verdict {
-  font-weight: bold;
-  padding: 6px 12px;
-  border-radius: 8px;
+    body { padding: 1rem; }
+    .container { padding: 1.5rem; }
+    h2 { font-size: 1.8rem; }
+    .video-info, .moderation-summary { grid-template-columns: 1fr; }
+    .action-buttons { flex-direction: column; gap: 0.8rem; }
+    .btn { width: 100%; }
 }
