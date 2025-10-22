@@ -4,10 +4,6 @@ import mimetypes
 from datetime import timedelta, datetime
 from google.cloud import storage
 from google.oauth2 import service_account
-import json
-from google.auth import default, iam
-from google.auth.iam import Signer
-from google.auth.transport import requests
 from google.auth import default as auth_default
 from google.auth.transport.requests import Request
 from app.services.logging_service import audit_logger
@@ -17,6 +13,53 @@ logger = logging.getLogger(__name__)
 # Lee config desde variables de entorno (centralizado en .env)
 BUCKET_NAME = os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", "accessfan-video")
 GOOGLE_CRED_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # opcional en local
+
+
+def _build_signed_url(blob, expiration=timedelta(hours=24), method="GET"):
+    """Genera una URL firmada compatible con entornos con/ sin private_key.
+
+    Returns:
+        tuple[str, str]: (url, modo) donde modo ∈ {"PRIVATE_KEY", "IAM"}
+    """
+
+    creds, _ = auth_default()
+
+    try:
+        creds.refresh(Request())
+    except Exception as e:
+        logger.warning(f"[SIGNED_URL] No se pudo refrescar token ADC: {e}")
+
+    sign_bytes = getattr(creds, "sign_bytes", None)
+    if callable(sign_bytes):
+        logger.info("[SIGNED_URL] 🔑 Usando private_key (firma local)")
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=expiration,
+            method=method,
+        ), "PRIVATE_KEY"
+
+    sa_email = getattr(creds, "service_account_email", None) or os.getenv("GCS_SIGNER_EMAIL")
+    access_token = getattr(creds, "token", None)
+
+    if not sa_email:
+        logger.warning("[SIGNED_URL] No se detectó service_account_email en ADC; define GCS_SIGNER_EMAIL si es necesario.")
+
+    logger.info("[SIGNED_URL] 🔐 Usando IAM SignBlob (service_account_email + access_token)")
+
+    extra_kwargs = {
+        "version": "v4",
+        "expiration": expiration,
+        "method": method,
+    }
+
+    if sa_email:
+        extra_kwargs["service_account_email"] = sa_email
+
+    if access_token:
+        extra_kwargs["access_token"] = access_token
+
+    return blob.generate_signed_url(**extra_kwargs), "IAM"
+
 
 def _get_storage_client():
     """
@@ -99,11 +142,8 @@ def obtener_url_logo(nombre_archivo="esc-csir.png"):
 
         # Intentar firmar
         try:
-            return blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(hours=24),
-                method="GET"
-            )
+            url, _ = _build_signed_url(blob, expiration=timedelta(hours=24), method="GET")
+            return url
         except Exception as e:
             # Fallbacks
             audit_logger.log_error(
@@ -225,11 +265,10 @@ def subir_a_gcs(file_obj, filename, socio=None, descripcion=None):
 
         # b) Intentar firmar (preferido en entornos privados)
         try:
-            signed_url = blob.generate_signed_url(
-                expiration=timedelta(hours=24),
-                method="GET"
+            signed_url, mode = _build_signed_url(blob, expiration=timedelta(hours=24), method="GET")
+            logger.info(
+                f"[UPLOAD] URL firmada generada para '{filename}' (modo={mode}): {signed_url}"
             )
-            logger.info(f"[UPLOAD] URL firmada generada para '{filename}': {signed_url}")
             return blob.name, signed_url, file_size
         except Exception as e:
             logger.error(f"[UPLOAD] Error generando signed_url para '{filename}': {e}", exc_info=True)
@@ -282,41 +321,9 @@ def obtener_url_firmada(filename: str, horas: int = 1, method: str = "GET"):
         except Exception as e:
             logger.warning(f"[SIGNED_URL] Aviso al verificar existencia: {e}")
 
-        # 1) Obtener credenciales por defecto y refrescarlas (necesitamos un access_token en Cloud Run)
-        creds, _ = auth_default()
-        try:
-            creds.refresh(Request())
-        except Exception as e:
-            logger.warning(f"[SIGNED_URL] No se pudo refrescar token ADC: {e}")
-
-        # 2) Si la credencial puede firmar localmente (típico JSON key local) => firma directa
-        sign_bytes = getattr(creds, "sign_bytes", None)
-        if callable(sign_bytes):
-            logger.info("[SIGNED_URL] 🔑 Usando private_key (firma local)")
-            url = blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(hours=horas),
-                method=method,
-            )
-            return {"url": url, "mode": "PRIVATE_KEY"}
-
-        # 3) Cloud Run / ADC sin private_key => IAM SignBlob (via google-cloud-storage)
-        #    Necesitamos: service_account_email + access_token
-        sa_email = getattr(creds, "service_account_email", None) or os.getenv("GCS_SIGNER_EMAIL")
-        access_token = getattr(creds, "token", None)
-
-        if not sa_email:
-            logger.warning("[SIGNED_URL] No se detectó service_account_email en ADC; define GCS_SIGNER_EMAIL si es necesario.")
-
-        logger.info("[SIGNED_URL] 🔐 Usando IAM SignBlob (service_account_email + access_token)")
-        url = blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(hours=horas),
-            method=method,
-            service_account_email=sa_email,
-            access_token=access_token,
-        )
-        return {"url": url, "mode": "IAM"}
+        url, mode = _build_signed_url(blob, expiration=timedelta(hours=horas), method=method)
+        logger.info(f"[SIGNED_URL] URL firmada generada (modo={mode}) para '{filename}'")
+        return {"url": url, "mode": mode}
 
     except Exception as e:
         logger.error(f"[SIGNED_URL] ❌ Error generando URL firmada para '{filename}': {e}", exc_info=True)
@@ -359,8 +366,8 @@ def _rehydrate_from_gcs(videos_list, id_counter, prefix="uploads/"):
             url = blob.public_url
             if not url:
                 try:
-                    url = blob.generate_signed_url(expiration=timedelta(hours=24), method="GET")
-                    logger.info(f"[REHYDRATE] Signed URL generada para '{blob.name}': {url}")
+                    url, mode = _build_signed_url(blob, expiration=timedelta(hours=24), method="GET")
+                    logger.info(f"[REHYDRATE] Signed URL generada para '{blob.name}' (modo={mode}): {url}")
                 except Exception as e:
                     logger.error(f"[REHYDRATE] No se pudo generar signed_url para '{blob.name}': {e}", exc_info=True)
                     url = None
@@ -454,7 +461,8 @@ def obtener_video_por_nombre(nombre_archivo):
         url = blob.public_url
         if not url:
             logger.info(f"[GET_VIDEO] public_url vacío para '{nombre_archivo}', generando signed_url…")
-            url = blob.generate_signed_url(expiration=timedelta(hours=24), method="GET")
+            url, mode = _build_signed_url(blob, expiration=timedelta(hours=24), method="GET")
+            logger.info(f"[GET_VIDEO] Signed URL generada (modo={mode}) para '{nombre_archivo}'")
 
         logger.info(f"[GET_VIDEO] URL obtenida para '{nombre_archivo}': {url}")
 
