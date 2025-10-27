@@ -519,3 +519,16 @@ tbody tr:nth-child(5) { animation-delay: 0.5s; }
     from { opacity: 0; transform: translateX(-20px); }
     to { opacity: 1; transform: translateX(0); }
 }
+/* ====== FIX DE REPRODUCCIÓN EN MODAL ====== */
+/* Limita tamaño y mantiene proporciones, útil para videos verticales y horizontales */
+#videoModal video{
+    display:block;
+    margin:0 auto;
+    max-width:100%;
+    width:auto;          /* evita forzar ancho completo en vertical */
+    height:auto;
+    max-height:75vh;     /* no excede el alto visible */
+    object-fit:contain;  /* añade letterboxing sin recortar */
+    background:#000;
+    border-radius:12px;
+}

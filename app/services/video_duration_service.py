@@ -17,11 +17,11 @@ def obtener_duracion_video(file_obj) -> float:
     Returns:
         float: Duración en segundos, 0.0 si hay error
     """
-    print("🎬 === INICIO obtener_duracion_video ===")
-    print(f"🎬 Tipo de archivo recibido: {type(file_obj)}")
+    logger.info("✅ === INICIO obtener_duracion_video ===")
+    print(f"✅ Tipo de archivo recibido: {type(file_obj)}")
     
     filename = getattr(file_obj, 'filename', 'No disponible')
-    print(f"🎬 Nombre del archivo: {filename}")
+    print(f"✅ Nombre del archivo: {filename}")
     
     audit_logger.log_error(
         error_type="VIDEO_DURATION_START",
@@ -33,32 +33,32 @@ def obtener_duracion_video(file_obj) -> float:
     
     try:
         # Crear archivo temporal
-        print("🎬 Creando archivo temporal...")
+        print("✅ Creando archivo temporal...")
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
             temp_file_path = temp_file.name
-            print(f"🎬 Archivo temporal creado en: {temp_file_path}")
+            print(f"✅ Archivo temporal creado en: {temp_file_path}")
             
             # Resetear el stream al inicio
             if hasattr(file_obj, 'stream'):
-                print("🎬 El archivo tiene atributo 'stream'")
+                print("✅ El archivo tiene atributo 'stream'")
                 file_obj.stream.seek(0)
                 data = file_obj.stream.read()
-                print(f"🎬 Bytes leídos del stream: {len(data)}")
+                print(f"✅ Bytes leídos del stream: {len(data)}")
                 temp_file.write(data)
                 file_obj.stream.seek(0)  # Resetear para otros usos posteriores
-                print("🎬 Stream reseteado correctamente")
+                print("✅ Stream reseteado correctamente")
             else:
-                print("🎬 El archivo NO tiene atributo 'stream', usando seek directo")
+                print("✅ El archivo NO tiene atributo 'stream', usando seek directo")
                 file_obj.seek(0)
                 data = file_obj.read()
-                print(f"🎬 Bytes leídos directamente: {len(data)}")
+                print(f"✅ Bytes leídos directamente: {len(data)}")
                 temp_file.write(data)
                 file_obj.seek(0)  # Resetear para otros usos posteriores
-                print("🎬 Archivo reseteado correctamente")
+                print("✅ Archivo reseteado correctamente")
         
         # Verificar que el archivo temporal tiene contenido
         temp_size = os.path.getsize(temp_file_path)
-        print(f"🎬 Tamaño del archivo temporal: {temp_size} bytes")
+        print(f"✅ Tamaño del archivo temporal: {temp_size} bytes")
         
         if temp_size == 0:
             print("❌ El archivo temporal está vacío!")
@@ -71,14 +71,14 @@ def obtener_duracion_video(file_obj) -> float:
         
         # Usar moviepy para obtener duración
         try:
-            print("🎬 Intentando importar MoviePy...")
+            print("✅ Intentando importar MoviePy...")
             from moviepy.editor import VideoFileClip
             print("✅ MoviePy importado correctamente")
             
-            print(f"🎬 Abriendo video con VideoFileClip: {temp_file_path}")
+            print(f"✅ Abriendo video con VideoFileClip: {temp_file_path}")
             with VideoFileClip(temp_file_path) as video_clip:
                 duracion = video_clip.duration
-                print(f"⏱️ Duración obtenida de MoviePy: {duracion}")
+                print(f"✅ Duración obtenida de MoviePy: {duracion}")
                 
             if duracion is not None:
                 resultado = float(duracion)

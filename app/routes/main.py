@@ -208,13 +208,29 @@ def _procesar_upload_club(club_id, config):
             size_bytes=file_size_bytes
         )
         
-        thread = threading.Thread(
-            target=_procesar_video_con_ia_async, 
-            args=(nuevo_video.id,)
-        )
-        thread.daemon = True
-        thread.start()
-        
+        import os
+        from app.services.video_processor import procesar_video_individual
+
+        logger.info(f"Iniciando procesamiento de IA para video {nuevo_video.id}")
+
+        if os.getenv("K_SERVICE"):  # Estamos en Cloud Run
+            logger.info("Cloud Run detectado: procesamiento IA sin threading")
+            try:
+                resultado = procesar_video_individual(nuevo_video)
+                if resultado.get("exitoso"):
+                    print(f"ÉXITO: Video {nuevo_video.id} procesado con IA")
+                else:
+                    print(f"❌ ERROR IA: {resultado.get('error')}")
+            except Exception as e:
+                logger.error(f"❌ Fallo crítico en procesamiento inline: {e}")
+        else:
+            # Local: threading asíncrono
+            thread = threading.Thread(
+                target=_procesar_video_con_ia_async, 
+                args=(nuevo_video.id,)
+            )
+            thread.daemon = True
+            thread.start()
         audit_logger.log_ia_analysis(
             video_id=nuevo_video.id,
             estado_ia="procesando",

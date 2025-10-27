@@ -273,7 +273,7 @@ video {
     color: #CCCCCC;
     font-size: 0.9rem;
 }
-
+html, body { margin:0; padding:0; }
 /* Layout para header/footer */
 html {
     height: 100%;

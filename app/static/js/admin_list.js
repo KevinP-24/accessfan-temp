@@ -1,5 +1,4 @@
 // static/js/admin_list.js
-
 // Animación de números
 function animateNumbers() {
   const numbers = document.querySelectorAll('.stat-number');
@@ -238,7 +237,7 @@ async function pollStatuses() {
 }
 
 // Arranca polling y re-enlaza comportamientos si cambian filas
-function startRealtimePolling(intervalMs = 2500) {
+function startRealtimePolling(intervalMs = 15000) {
   pollStatuses();
   setInterval(pollStatuses, intervalMs);
 

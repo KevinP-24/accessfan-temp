@@ -60,7 +60,6 @@ def _build_signed_url(blob, expiration=timedelta(hours=24), method="GET"):
 
     return blob.generate_signed_url(**extra_kwargs), "IAM"
 
-
 def _get_storage_client():
     """
     Crea el cliente de GCS. Si hay ruta de credenciales (local), la usa.
