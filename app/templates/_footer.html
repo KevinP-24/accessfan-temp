@@ -1,113 +1,124 @@
 <!-- Agregar esto al CSS existente o crear archivo separado -->
 <style>
-/* Footer Styles - Demo Rápido */
-body {
-    margin: 0;
-    padding-top: 80px; /* Espacio para el header fijo */
+/* Footer Styles - compacto */
+body{
+  margin:0;
+  padding-top:80px; /* header fijo */
 }
 
-.demo-footer {
-    background: linear-gradient(135deg, #000000, #1C1C1C);
-    border-top: 3px solid #F5522C;
-    margin-top: 3rem;
-    padding: 2rem 0 1rem;
-    color: #FFFFFF;
-    width: 100%;
-    position: relative;
-    bottom: 0;
+.demo-footer{
+  background:#0a0a0a;
+  border-top:1px solid #222;
+  margin-top:1rem;
+  padding:.6rem 0;               /* menos alto */
+  color:#ccc;
+  width:100%;
+  position:relative;
+  bottom:0;
+  font-size:.82rem;               /* tipografía menor */
+  line-height:1.25;               /* compacto */
 }
 
-.demo-footer-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 1rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-    margin-bottom: 1rem;
+.demo-footer-container{
+  max-width:1000px;
+  margin:0 auto;
+  padding:0 .75rem;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:.6rem;                      /* menos separación */
+  margin-bottom:.35rem;
 }
 
-.demo-footer-brand {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    font-size: 1.3rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-    color: #F5522C;
+.demo-footer-brand{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+  font-size:1rem;                 /* menor */
+  font-weight:700;
+  margin-bottom:.35rem;
+  color:#F5522C;
 }
 
-.demo-footer-brand i {
-    font-size: 1.5rem;
+.demo-footer-brand i{font-size:1.1rem}
+
+.demo-footer-desc{
+  color:#aaa;
+  font-size:.78rem;
+  line-height:1.25;
+  margin:0;
 }
 
-.demo-footer-desc {
-    color: #CCCCCC;
-    font-size: 0.9rem;
-    line-height: 1.5;
+.demo-footer-section h4{
+  color:#F5522C;
+  margin:.2rem 0 .4rem;
+  font-size:.88rem;
+  font-weight:600;
 }
 
-.demo-footer-section h4 {
-    color: #F5522C;
-    margin-bottom: 1rem;
-    font-size: 1rem;
+.demo-footer-links{list-style:none;padding:0;margin:0}
+.demo-footer-links li{margin-bottom:.3rem}
+.demo-footer-links a{
+  color:#bbb;
+  text-decoration:none;
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+  transition:transform .2s,color .2s;
+  font-size:.78rem;
+}
+.demo-footer-links a:hover{color:#F5522C;transform:translateX(2px)}
+
+.demo-footer-info{
+  color:#bbb;
+  font-size:.78rem;
+  margin-bottom:.25rem;
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+}
+.demo-footer-info i{color:#F5522C;width:14px}
+
+.demo-footer-bottom{
+  border-top:1px solid #222;
+  padding-top:.4rem;
+  text-align:center;
+  color:#888;
+  font-size:.72rem;
 }
 
-.demo-footer-links {
-    list-style: none;
-    padding: 0;
+/* Más recorte en pantallas medianas */
+@media (max-width: 1200px){
+  .demo-footer-container{
+    max-width:900px;
+    gap:.5rem;
+    margin-bottom:.3rem;
+  }
+  .demo-footer-desc{display:none}            /* quita párrafo largo */
 }
 
-.demo-footer-links li {
-    margin-bottom: 0.8rem;
-}
-
-.demo-footer-links a {
-    color: #CCCCCC;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.3s ease;
-    font-size: 0.9rem;
-}
-
-.demo-footer-links a:hover {
-    color: #F5522C;
-    transform: translateX(5px);
-}
-
-.demo-footer-info {
-    color: #CCCCCC;
-    font-size: 0.85rem;
-    margin-bottom: 0.6rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.demo-footer-info i {
-    color: #F5522C;
-    width: 16px;
-}
-
-.demo-footer-bottom {
-    border-top: 1px solid #333;
-    padding-top: 1rem;
-    text-align: center;
-    color: #999;
-    font-size: 0.85rem;
-}
-
-@media (max-width: 768px) {
-    .demo-footer-container {
-        grid-template-columns: 1fr;
-        text-align: center;
-    }
-    .demo-footer-links a,
-    .demo-footer-info {
-        justify-content: center;
-    }
+/* Ultra compacto en móvil */
+@media (max-width: 768px){
+  .demo-footer{
+    padding:.45rem 0;
+    font-size:.78rem;
+  }
+  .demo-footer-container{
+    grid-template-columns:1fr;
+    text-align:center;
+    gap:.35rem;
+  }
+  .demo-footer-section{display:none}         /* oculta bloques extras */
+  .demo-footer-links a,
+  .demo-footer-info{justify-content:center}
+  .demo-footer-brand{
+    justify-content:center;
+    font-size:.95rem;
+    margin-bottom:.2rem;
+  }
+  .demo-footer-bottom{
+    padding-top:.3rem;
+    font-size:.7rem;
+  }
 }
 </style>
 
