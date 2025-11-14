@@ -108,6 +108,15 @@
       </div>
     </div>
     {% endif %}
+  <nav class="pagination">
+    {% if has_prev %}
+      <a href="{{ url_for('main.listado_videos', page=page-1) }}">Anterior</a>
+    {% endif %}
+    <span>Página {{ page }} de {{ total_pages }}</span>
+    {% if has_next %}
+      <a href="{{ url_for('main.listado_videos', page=page+1) }}">Siguiente</a>
+    {% endif %}
+  </nav>
   </div>
 
   <!-- Modal (inyectada por JS si no existe) -->

@@ -11,7 +11,10 @@ from datetime import datetime
 import logging
 import threading
 from app.services import secret_manager_service as secrets
+import math
 
+#Cantidad de videos que se cargan
+ADMIN_VIDEOS_PAGE_SIZE = int(os.getenv("ADMIN_VIDEOS_PAGE_SIZE", 10))
 
 
 logger = logging.getLogger(__name__)
@@ -356,54 +359,84 @@ def upload_video_dinamico():
 # -------------------------------
 @main.get("/admin/videos")
 def listado_videos():
-    """Listado de videos - Con logging estructurado de accesos admin"""
+    """Listado de videos - Con logging estructurado de accesos admin + paginación"""
     admin_user = obtener_usuario_desde_header()
-    
-    # LOGGING ESTRUCTURADO: Registrar acceso admin
+
     audit_logger.log_admin_action(
         action='view_list',
         video_id=None,
         admin_user=admin_user,
         details={'endpoint': '/admin/videos'}
     )
-    
+
     try:
-        videos = Video.query.order_by(Video.fecha_subida.desc()).all()
-        
-        # Log básico para debugging (solo si hay problemas)
-        logger.info(f"Admin listado: {len(videos)} videos cargados")
-        
-        # LOGGING ESTRUCTURADO: Registrar estadísticas de acceso
+        page = request.args.get("page", 1, type=int)
+        if page < 1:
+            page = 1
+
+        per_page = ADMIN_VIDEOS_PAGE_SIZE
+
+        base_query = Video.query.order_by(Video.fecha_subida.desc())
+
+        total_videos = base_query.count()
+
+        videos = (
+            base_query
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+
+        import math
+        total_pages = max(1, math.ceil(total_videos / per_page))
+        has_next = page < total_pages
+        has_prev = page > 1
+
+        logger.info(
+            f"Admin listado: page={page}, per_page={per_page}, "
+            f"total_videos={total_videos}, page_items={len(videos)}"
+        )
+
         stats = {
-            'total_videos': len(videos),
-            'sin_revisar': len([v for v in videos if v.estado == 'sin-revisar']),
-            'aceptados': len([v for v in videos if v.estado == 'aceptado']),
-            'rechazados': len([v for v in videos if v.estado == 'rechazado']),
-            'ia_pendiente': len([v for v in videos if v.estado_ia == 'pendiente']),
-            'ia_completado': len([v for v in videos if v.estado_ia == 'completado'])
+            'total_videos': total_videos,
+            'pagina_actual': page,
+            'total_paginas': total_pages,
+            'items_en_pagina': len(videos),
         }
-        
+
         audit_logger.log_admin_action(
             action='list_stats',
             video_id=None,
             admin_user=admin_user,
             details=stats
         )
-        
-        return render_template("admin_list.html", videos=videos)
-        
+
+        return render_template(
+            "admin_list.html",
+            videos=videos,
+            page=page,
+            total_pages=total_pages,
+            has_prev=has_prev,
+            has_next=has_next,
+        )
+
     except Exception as e:
-        # LOGGING ESTRUCTURADO: Error accediendo a listado
         audit_logger.log_error(
             error_type="ADMIN_LIST_ERROR",
             message=f"Error cargando listado de videos: {str(e)}",
             user_id=admin_user
         )
-        
-        # Log detallado solo para debugging interno
+
         logger.error(f"Error en listado admin: {str(e)}")
-        
-        return render_template("admin_list.html", videos=[])
+
+        return render_template(
+            "admin_list.html",
+            videos=[],
+            page=1,
+            total_pages=1,
+            has_prev=False,
+            has_next=False,
+        )
 
 @main.get("/admin/videos/<int:video_id>")
 def ver_detalle_video(video_id: int):
@@ -483,7 +516,6 @@ def signed_url_for_video(video_id: int):
 # -------------------------------
 #   RUTAS MODIFICAR ESTADO VIDEO
 # -------------------------------
-
 @main.post("/admin/videos/<int:video_id>/revisar")
 def marcar_como_revisado(video_id: int):
     """Marcar video como aceptado - Con logging estructurado"""
@@ -623,28 +655,6 @@ def rechazar_video(video_id: int):
         logger.error(f"Error rechazando video {video_id}: {e}")
         db.session.rollback()
         return jsonify({"error": "Database error", "details": str(e)}), 500
-
-# -------------------------------
-#   RUTAS DE DEBUG/UTILIDAD
-# -------------------------------
-@main.get("/health")
-def health_check():
-    """Health check endpoint - CAMBIO: contar videos desde base de datos"""
-    try:
-        video_count = Video.query.count()
-        return jsonify({
-            "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "videos_count": video_count
-        }), 200
-    except Exception as e:
-        logger.error(f"Error en health check: {e}")
-        return jsonify({
-            "status": "error",
-            "timestamp": datetime.utcnow().isoformat(),
-            "error": str(e)
-        }), 500
-
 # =============================================================
 # ========= RUTA PARA STATUS DEL SPINER DE LOS VIDEOS =========
 # =============================================================
@@ -714,3 +724,23 @@ def upload_prueba_hijo():
         upload_success=upload_success,
         error=error
     )
+# -------------------------------
+#   RUTAS DE DEBUG/UTILIDAD
+# -------------------------------
+@main.get("/health")
+def health_check(): 
+    """Health check endpoint - CAMBIO: contar videos desde base de datos"""
+    try:
+        video_count = Video.query.count()
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "videos_count": video_count
+        }), 200
+    except Exception as e:
+        logger.error(f"Error en health check: {e}")
+        return jsonify({
+            "status": "error",
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e)
+        }), 500

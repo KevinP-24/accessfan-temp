@@ -491,6 +491,39 @@ tbody tr:nth-child(5) { animation-delay: 0.5s; }
     animation: spin 1s linear infinite;
 }
 
+.pagination {
+    margin: 1.5rem auto 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+    color: #FFFFFF;
+}
+
+.pagination-info {
+    color: #CCCCCC;
+}
+
+.pagination a {
+    padding: 0.5rem 1.2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 82, 44, 0.6);
+    text-decoration: none;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    background: linear-gradient(135deg, #F5522C, #ff704d);
+    color: #FFFFFF;
+    box-shadow: 0 6px 16px rgba(245, 82, 44, 0.35);
+    transition: all 0.25s ease;
+}
+
+.pagination a:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(245, 82, 44, 0.45);
+    background: linear-gradient(135deg, #ff704d, #F5522C);
+}
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
