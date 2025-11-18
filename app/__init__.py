@@ -1,7 +1,13 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from app.config import Config
 from app.services.logging_service import audit_logger
+
+# 1) Cargar variables desde Secret Manager ANTES de importar Config
+from app.services.secret_manager_service import cargar_variables_desde_secret
+cargar_variables_desde_secret()
+
+# 2) Ahora sí importar Config (ya con os.environ lleno)
+from app.config import Config
 
 # Crear la instancia de SQLAlchemy
 db = SQLAlchemy()
@@ -11,7 +17,7 @@ def create_app():
     try:
         app = Flask(__name__)
 
-        # Cargar la configuración desde la clase Config
+        # Configuración desde la clase Config
         app.config.from_object(Config)
 
         # Log inicialización de la aplicación
@@ -19,7 +25,8 @@ def create_app():
             error_type="APP_INITIALIZATION_START",
             message="Iniciando configuración de la aplicación Flask",
             details={
-                'database_uri': app.config.get('SQLALCHEMY_DATABASE_URI', '').split('@')[-1] if app.config.get('SQLALCHEMY_DATABASE_URI') else 'No configurada',
+                'database_uri': app.config.get('SQLALCHEMY_DATABASE_URI', '').split('@')[-1]
+                    if app.config.get('SQLALCHEMY_DATABASE_URI') else 'No configurada',
                 'secret_key_configured': bool(app.config.get('SECRET_KEY')),
                 'gcs_bucket': app.config.get('GOOGLE_CLOUD_STORAGE_BUCKET', 'No configurado')
             }
@@ -30,8 +37,6 @@ def create_app():
 
         # Importar el Blueprint 'main' desde el archivo correspondiente
         from app.routes.main import main
-
-        # Registrar el Blueprint 'main'
         app.register_blueprint(main)
 
         # Importar modelos para que SQLAlchemy los reconozca
@@ -52,7 +57,6 @@ def create_app():
                     message=f"Error creando tablas de base de datos: {str(e)}"
                 )
 
-        # Log inicialización exitosa
         audit_logger.log_error(
             error_type="APP_INITIALIZATION_SUCCESS",
             message="Aplicación Flask inicializada exitosamente"
@@ -61,7 +65,6 @@ def create_app():
         return app
 
     except Exception as e:
-        # Log error crítico de inicialización
         audit_logger.log_error(
             error_type="APP_INITIALIZATION_CRITICAL_ERROR",
             message=f"Error crítico inicializando aplicación Flask: {str(e)}"

@@ -284,6 +284,36 @@ def obtener_config_database():
     """
     return obtener_secreto_generico("database-config", es_json=True)
 
+def cargar_variables_desde_secret():
+    """
+    Carga todas las variables del secreto principal (JSON) al entorno (os.environ).
+    Usa SECRET_NAME y GCP_PROJECT_ID ya configurados.
+    """
+    try:
+        nombre_secreto = os.getenv("SECRET_NAME", "access-secret")
+        data = obtener_secreto_generico(nombre_secreto, es_json=True)
+
+        if not data:
+            logger.warning(f"No se pudo cargar configuración desde el secreto '{nombre_secreto}'")
+            return False
+
+        for key, value in data.items():
+            # No pisamos SECRET_NAME ni GCP_PROJECT_ID
+            if key in ("SECRET_NAME", "GCP_PROJECT_ID"):
+                continue
+            os.environ[key] = str(value)
+
+        logger.info(f"Variables cargadas desde Secret Manager: {len(data)} claves")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error cargando variables desde Secret Manager: {e}")
+        audit_logger.log_error(
+            error_type="SECRET_MANAGER_ENV_LOAD_ERROR",
+            message=f"Error cargando variables desde Secret Manager: {str(e)}"
+        )
+        return False
+
 def test_secret_manager_connection():
     """
     Función de utilidad para probar la conexión con Secret Manager.

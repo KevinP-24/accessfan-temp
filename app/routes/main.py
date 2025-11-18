@@ -14,7 +14,7 @@ from app.services import secret_manager_service as secrets
 import math
 
 #Cantidad de videos que se cargan
-ADMIN_VIDEOS_PAGE_SIZE = int(os.getenv("ADMIN_VIDEOS_PAGE_SIZE", 10))
+ADMIN_VIDEOS_PAGE_SIZE = int(os.getenv("ADMIN_VIDEOS_PAGE_SIZE", 100))
 
 
 logger = logging.getLogger(__name__)
@@ -261,64 +261,6 @@ def home():
 # -------------------------------
 #   RUTA DINÁMICA (PARA IFRAME)
 # -------------------------------
-@main.get("/upload")
-def upload_dinamico():
-    """Formulario de subida dinámico basado en club_id de la BD"""
-    
-    club_id = request.args.get('club_id')
-    
-    # Configuración por defecto de AccessFan
-    config_default = {
-        "id": None,
-        "nombre": "AccessFan",
-        "color": "#F5522C",
-        "logo": "logo-b.png",
-        "titulo": "Subir Video - AccessFan Platform"
-    }
-    
-    config = config_default  # valor por defecto inicial
-
-    if club_id:
-        try:
-            club_id_int = int(club_id)
-            config_db = obtener_club_por_id(club_id_int)
-            if config_db:
-                config = config_db
-            else:
-                logger.warning(f"Club {club_id_int} no encontrado, usando configuración por defecto pero manteniendo club_id={club_id}")
-        except ValueError:
-            logger.warning(f"club_id inválido: {club_id}, usando configuración por defecto")
-            # aquí no sobreescribimos club_id, lo dejamos como vino
-    else:
-        logger.info("Acceso a /upload sin club_id, usando configuración por defecto AccessFan")
-        club_id = None
-    
-    # Obtener logo
-    try:
-        logo_url = obtener_url_logo(config["logo"]) if config["logo"] else None
-    except Exception as e:
-        logger.warning(f"Error obteniendo logo: {e}")
-        logo_url = None
-    
-    upload_success = request.args.get('success') == 'true'
-    
-    # Log acceso
-    audit_logger.log_error(
-        error_type="UPLOAD_FORM_ACCESS",
-        message=f"Acceso a formulario de upload para {config['nombre']}",
-        details={'club_id': club_id, 'club_nombre': config['nombre'], 'es_default': (config == config_default)}
-    )
-    
-    return render_template(
-        "upload.html", 
-        logo_url=logo_url,
-        team_name=config["nombre"],
-        team_color=config["color"],
-        team_title=config["titulo"],
-        club_id=club_id,
-        upload_success=upload_success
-    )
-
 @main.post("/upload")
 def upload_video_dinamico():
     """Procesar subida de video dinámico"""
@@ -700,7 +642,7 @@ def estados_videos():
 # ========= RUTAS DE PRUEBA PARA IFRAME DINÁMICO =========
 # =============================================================
 @main.route('/equipo1')
-def prueba_final_padre():
+def upload_padre():
     #Obtiene el token de Secret Manager.
     token_real = secrets.obtener_token_secreto()
 
@@ -709,10 +651,10 @@ def prueba_final_padre():
         abort(503, description="No se pudo obtener la credencial de autenticación.")
 
     # 3. Si el token existe, carga la página y se lo pasa.
-    return render_template('iframe_prueba.html', auth_token=token_real)
+    return render_template('iframe_upload.html', auth_token=token_real)
 
 @main.get("/upload_prueba")
-def upload_prueba_hijo():
+def upload_hijo():
     """
     Renderiza la plantilla genérica del iframe que esperará los datos.
     """
@@ -720,7 +662,7 @@ def upload_prueba_hijo():
     error = request.args.get("error")  # opcional, si quieres mostrar errores en el futuro
 
     return render_template(
-        "upload_prueba.html",
+        "upload.html",
         upload_success=upload_success,
         error=error
     )

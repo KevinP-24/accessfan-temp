@@ -255,6 +255,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(animateNumbers, 500);
   bindRowHover();
   bindPlayButtons();
-  startRealtimePolling(2500);
+  startRealtimePolling();
 });
 
