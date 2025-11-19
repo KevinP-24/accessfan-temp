@@ -2,12 +2,44 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Prueba de Iframe</title>
+    <title>Listado de Videos (Iframe)</title>
 </head>
-<body>    
-    <iframe src="https://video-767959711200.us-east1.run.app/admin/videos" 
-            width="100%" 
-            height="800px">
+<body>
+
+    <iframe id="videoFrame"
+            src="{{ url_for('main.listado_videos') }}"
+            style="width:100%;border:0;display:block;min-height:320px;">
     </iframe>
+
+    <script>
+        const iframe = document.getElementById('videoFrame');
+
+        const datosParaIframe = {
+            auth_token: {{ auth_token | tojson }},
+            // si luego quieres pasar más cosas, las agregas aquí
+            // por ahora se comporta igual que upload: el backend no valida el token
+        };
+
+        iframe.onload = function () {
+            iframe.contentWindow.postMessage(
+                datosParaIframe,
+                window.location.origin
+            );
+        };
+    </script>
+
+    <script>
+    (function () {
+        function fit() {
+            const i = document.getElementById('videoFrame');
+            const vh = Math.max(window.innerHeight, document.documentElement.clientHeight);
+            i.style.height = Math.max(vh, 320) + 'px';
+        }
+        window.addEventListener('load', fit, { once: true });
+        window.addEventListener('resize', fit);
+        window.addEventListener('orientationchange', fit);
+    })();
+    </script>
+
 </body>
 </html>

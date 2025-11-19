@@ -301,9 +301,20 @@ def upload_video_dinamico():
 # -------------------------------
 @main.get("/admin/videos")
 def listado_videos():
-    """Listado de videos - Con logging estructurado de accesos admin + paginación"""
-    admin_user = obtener_usuario_desde_header()
+    """
+    Listado de videos - Con logging estructurado de accesos admin + paginación
+    y con token disponible para el front (igual que en upload).
+    """
+    # === Obtener token desde Secret Manager (sin bloquear por él) ===
+    token_real = None
+    try:
+        token_real = secrets.obtener_token_secreto()
+        if not token_real:
+            logger.warning("No se obtuvo token_real en /admin/videos (se continúa sin abortar).")
+    except Exception as e:
+        logger.error(f"Error obteniendo token_real en /admin/videos: {e}")
 
+    admin_user = obtener_usuario_desde_header()
     audit_logger.log_admin_action(
         action='view_list',
         video_id=None,
@@ -317,11 +328,9 @@ def listado_videos():
             page = 1
 
         per_page = ADMIN_VIDEOS_PAGE_SIZE
-
         base_query = Video.query.order_by(Video.fecha_subida.desc())
 
         total_videos = base_query.count()
-
         videos = (
             base_query
             .offset((page - 1) * per_page)
@@ -345,7 +354,6 @@ def listado_videos():
             'total_paginas': total_pages,
             'items_en_pagina': len(videos),
         }
-
         audit_logger.log_admin_action(
             action='list_stats',
             video_id=None,
@@ -360,6 +368,7 @@ def listado_videos():
             total_pages=total_pages,
             has_prev=has_prev,
             has_next=has_next,
+            auth_token=token_real,  # ← igual que en upload_padre
         )
 
     except Exception as e:
@@ -368,9 +377,7 @@ def listado_videos():
             message=f"Error cargando listado de videos: {str(e)}",
             user_id=admin_user
         )
-
         logger.error(f"Error en listado admin: {str(e)}")
-
         return render_template(
             "admin_list.html",
             videos=[],
@@ -378,6 +385,7 @@ def listado_videos():
             total_pages=1,
             has_prev=False,
             has_next=False,
+            auth_token=token_real,  # también lo pasamos en el caso de error
         )
 
 @main.get("/admin/videos/<int:video_id>")
@@ -420,7 +428,6 @@ def ver_detalle_video(video_id: int):
 def signed_url_for_video(video_id: int):
     """Obtener URL firmada para video - Con logging estructurado básico"""
     admin_user = obtener_usuario_desde_header()
-    
     video = Video.query.get(video_id)
     if not video:
         audit_logger.log_admin_action(
@@ -429,13 +436,10 @@ def signed_url_for_video(video_id: int):
             admin_user=admin_user
         )
         return jsonify({"error": "Video not found"}), 404
-
     if not video.gcs_object_name:
         return jsonify({"url": video.video_url, "mode": "DIRECT"}), 200
-    
     try:
         info = obtener_url_firmada(video.gcs_object_name, horas=2)
-
         # LOGGING ESTRUCTURADO
         audit_logger.log_admin_action(
             action='generate_signed_url',
@@ -445,7 +449,6 @@ def signed_url_for_video(video_id: int):
         )
         
         return jsonify(info), 200  # ya incluye {"url":..., "mode":...}
-        
     except Exception as e:
         audit_logger.log_error(
             error_type="SIGNED_URL_ERROR",
@@ -454,7 +457,6 @@ def signed_url_for_video(video_id: int):
             user_id=admin_user
         )
         return jsonify({"error": "Could not generate signed URL", "details": str(e)}), 500
-
 # -------------------------------
 #   RUTAS MODIFICAR ESTADO VIDEO
 # -------------------------------
@@ -637,9 +639,8 @@ def estados_videos():
             message=f"Error obteniendo estados: {str(e)}"
         )
         return jsonify({"error": "server"}), 500
-
 # =============================================================
-# ========= RUTAS DE PRUEBA PARA IFRAME DINÁMICO =========
+# ========= RUTAS DE PRUEBA PARA IFRAME DINÁMICO ==============
 # =============================================================
 @main.route('/equipo1')
 def upload_padre():
