@@ -3,6 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, jsonif
 from app.services.gcs_service import subir_a_gcs, _get_bucket, obtener_url_firmada, obtener_url_logo
 from app.services.video_duration_service import obtener_duracion_video
 from app.services.video_processor import procesar_video_individual
+from app.services.video_batch_worker import procesar_videos_pendientes_batch
 from app.services.logging_service import audit_logger
 from app.models.video import Video
 from app.models.club import Club
@@ -111,144 +112,47 @@ def obtener_club_por_id(club_id):
 # -------------------------------
 #   FUNCIONES AUXILIARES
 # -------------------------------
-def _procesar_video_con_ia_async(video_id):
-    """
-    Procesa un video con IA de forma asíncrona.
-    Se ejecuta en un hilo separado para no bloquear la respuesta HTTP.
-    """
-    try:
-        print(f"🔥 INICIANDO PROCESAMIENTO ASÍNCRONO PARA VIDEO {video_id}")
-        from app import create_app
-        
-        # Crear contexto de aplicación para el hilo
-        app = create_app()
-        with app.app_context():
-            video = Video.query.get(video_id)
-            if video:
-                print(f"🎬 Video encontrado: {video.nombre_archivo}")
-                logger.info(f"🤖 Iniciando procesamiento asíncrono de IA para video {video_id}")
-                resultado = procesar_video_individual(video)
-                if resultado['exitoso']:
-                    print(f"✅ ÉXITO: Video {video_id} procesado con IA")
-                    logger.info(f"✅ Video {video_id} procesado exitosamente con IA")
-                else:
-                    print(f"❌ ERROR: {resultado.get('error')}")
-                    logger.error(f"❌ Error procesando video {video_id}: {resultado.get('error')}")
-            else:
-                print(f"❌ VIDEO {video_id} NO ENCONTRADO")
-                logger.error(f"❌ Video {video_id} no encontrado para procesamiento IA")
-    except Exception as e:
-        print(f"💥 ERROR CRÍTICO: {e}")
-        logger.error(f"❌ Error crítico en procesamiento asíncrono de video {video_id}: {e}")
-
 def _procesar_upload_club(club_id, config):
-    """Función auxiliar para procesar uploads de clubes dinámicos"""
     video = request.files.get("video")
     descripcion = (request.form.get("descripcion") or "").strip()
-
-    if not video or not video.filename:
-        audit_logger.log_error("UPLOAD_ERROR", "No video file provided", user_id=obtener_usuario_desde_header())
+    if not video:
         return redirect(url_for("main.upload_dinamico", club_id=club_id, error="no_file"))
-
-    # Usar datos del club desde BD o configuración por defecto
-    socio = f"{config.get('nombre', 'AccessFan')} - {request.headers.get('X-USER-ID', 'Socio desconocido')}"
-    
+    socio = f"{config.get('nombre','AccessFan')} - {request.headers.get('X-USER-ID','Socio desconocido')}"
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    
-    # Generar filename según si hay club_id o no
-    if club_id:
-        filename = f"uploads/club_{club_id}_{timestamp}_{video.filename}"
-    else:
-        filename = f"uploads/accessfan_{timestamp}_{video.filename}"
-
-    # Obtener duración del video ANTES de subir a GCS
+    filename = f"uploads/club_{club_id}_{timestamp}_{video.filename}" if club_id \
+               else f"uploads/accessfan_{timestamp}_{video.filename}"
     try:
         duracion_video = obtener_duracion_video(video)
-        logger.info(f"Duración obtenida para {config['nombre']}: {duracion_video} segundos")
-    except Exception as e:
-        logger.warning(f"Error obteniendo duración del video: {e}")
-        audit_logger.log_error("VIDEO_DURATION_ERROR", f"Error obteniendo duración: {str(e)}", user_id=obtener_usuario_desde_header())
+    except:
         duracion_video = 0.0
+    object_name, url_inicial, file_size_bytes = subir_a_gcs(video, filename, socio, descripcion)
+    nuevo_video = Video(
+        usuario_id=obtener_usuario_desde_header(),
+        video_url=url_inicial,
+        gcs_object_name=object_name,
+        nombre_archivo=video.filename,
+        duracion=duracion_video,
+        descripcion=descripcion or "Sin descripción proporcionada",
+        estado="sin-revisar",
+        estado_ia="pendiente",
+        contenido_explicito="No analizado"
+    )
+    db.session.add(nuevo_video)
+    db.session.commit()
+    return redirect(url_for("main.upload_hijo", club_id=club_id, success="true"))
 
-    # Subir a GCS y obtener también el tamaño del archivo
+@main.post("/events/gcs")
+def events_gcs_trigger():
+    """
+    Worker disparado por Eventarc cuando un objeto se finalize en GCS.
+    """
     try:
-        object_name, url_inicial, file_size_bytes = subir_a_gcs(
-            video, 
-            filename=filename, 
-            socio=socio, 
-            descripcion=descripcion
-        )
-        logger.info(f"Video subido exitosamente para {config['nombre']}: {object_name}, tamaño: {file_size_bytes} bytes")
+        stats = procesar_videos_pendientes_batch(limite=3)
+        logger.info(f"[EVENTARC] Resultado batch: {stats}")
+        return ("", 204)
     except Exception as e:
-        logger.error(f"Error subiendo video: {e}")
-        audit_logger.log_error("GCS_UPLOAD_ERROR", f"Error subiendo a GCS: {str(e)}", user_id=obtener_usuario_desde_header())
-        return redirect(url_for("main.upload_dinamico", club_id=club_id, error="upload_failed"))
-
-    # Guardar en base de datos con campos IA
-    try:
-        usuario_id = obtener_usuario_desde_header()
-        
-        nuevo_video = Video(
-            usuario_id=usuario_id,
-            video_url=url_inicial,
-            gcs_object_name=object_name,
-            nombre_archivo=video.filename,
-            duracion=duracion_video,
-            descripcion=descripcion or "Sin descripción proporcionada",
-            estado="sin-revisar",
-            estado_ia="pendiente",
-            contenido_explicito="No analizado"
-        )
-        
-        db.session.add(nuevo_video)
-        db.session.commit()
-        logger.info(f"Video de {config['nombre']} guardado en BD con ID: {nuevo_video.id}, duración: {duracion_video}s")
-        
-        audit_logger.log_video_upload(
-            video_id=nuevo_video.id,
-            user_id=usuario_id,
-            filename=video.filename,
-            size_bytes=file_size_bytes
-        )
-        
-        import os
-        from app.services.video_processor import procesar_video_individual
-
-        logger.info(f"Iniciando procesamiento de IA para video {nuevo_video.id}")
-
-        if os.getenv("K_SERVICE"):  # Estamos en Cloud Run
-            logger.info("Cloud Run detectado: procesamiento IA sin threading")
-            try:
-                resultado = procesar_video_individual(nuevo_video)
-                if resultado.get("exitoso"):
-                    print(f"ÉXITO: Video {nuevo_video.id} procesado con IA")
-                else:
-                    print(f"❌ ERROR IA: {resultado.get('error')}")
-            except Exception as e:
-                logger.error(f"❌ Fallo crítico en procesamiento inline: {e}")
-        else:
-            # Local: threading asíncrono
-            thread = threading.Thread(
-                target=_procesar_video_con_ia_async, 
-                args=(nuevo_video.id,)
-            )
-            thread.daemon = True
-            thread.start()
-        audit_logger.log_ia_analysis(
-            video_id=nuevo_video.id,
-            estado_ia="procesando",
-            resultado={"organizacion": config.get('nombre', 'AccessFan')},
-            tiempo_procesamiento=0
-        )
-        
-    except Exception as e:
-        logger.error(f"Error guardando video en BD: {e}")
-        audit_logger.log_error("DATABASE_ERROR", f"Error guardando en BD: {str(e)}", user_id=obtener_usuario_desde_header())
-        db.session.rollback()
-        return redirect(url_for("main.upload_dinamico", club_id=club_id, error="database_error"))
-
-    # Redirigir con parámetro de éxito
-    return redirect(url_for("main.upload_prueba_hijo", club_id=club_id, success="true"))
+        logger.error(f"[EVENTARC] Error: {e}")
+        return ("", 500)
 
 # -------------------------------
 #   RUTAS PRINCIPALES
