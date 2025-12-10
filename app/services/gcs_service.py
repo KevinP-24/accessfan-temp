@@ -162,6 +162,27 @@ def obtener_url_logo(nombre_archivo="esc-csir.png"):
         )
         return None
 
+def obtener_url_firmada_upload(object_name: str,content_type: str = "video/mp4",minutos: int = 60) -> dict:
+    """
+    Genera una URL firmada v4 para SUBIR (PUT) un objeto a GCS.
+    Usa el mismo mecanismo que obtener_url_firmada, pero con method="PUT".
+    """
+    bucket = _get_bucket()
+    blob = bucket.blob(object_name)
+    # Reutilizamos exactamente _build_signed_url
+    url, mode = _build_signed_url(
+        blob,
+        expiration=timedelta(minutes=minutos),
+        method="PUT",
+    )
+    return {
+        "url": url,
+        "mode": mode,
+        "object_name": object_name,
+        "bucket": bucket.name,
+        "content_type": content_type,
+    }
+
 def subir_a_gcs(file_obj, filename, socio=None, descripcion=None):
     """
     Sube un archivo a GCS con solo la fecha como metadata.
@@ -303,7 +324,7 @@ def obtener_url_firmada(filename: str, horas: int = 1, method: str = "GET"):
     - Local (JSON key con private_key): firma directa.
     - Cloud Run (ADC sin private_key): usa IAM SignBlob vía access_token + service_account_email.
     - Fallbacks: public_url o gs:// si algo falla.
-    Retorna: dict { "url": str|None, "mode": "PRIVATE_KEY"|"IAM"|"PUBLIC_FALLBACK"|"NOT_FOUND"|"ERROR" }
+    Retorna: dict { "url": str|None, "mode": "PRIVATE_KEY"|"IAM"|"PUBLIC_FALLBACK"|"ERROR" }
     """
     blob = None
     try:
@@ -312,11 +333,13 @@ def obtener_url_firmada(filename: str, horas: int = 1, method: str = "GET"):
         bucket = _get_bucket()
         blob = bucket.blob(filename)
 
-        # existencia (best-effort, si falla seguimos e intentamos firmar igual)
+        # existencia (best-effort): SOLO logueamos, NO devolvemos NOT_FOUND
         try:
             if not blob.exists():
-                logger.error(f"[SIGNED_URL] ❌ No existe '{filename}' en '{BUCKET_NAME}'")
-                return {"url": None, "mode": "NOT_FOUND"}
+                logger.warning(
+                    f"[SIGNED_URL] ⚠ '{filename}' aún no existe en '{BUCKET_NAME}', "
+                    "se genera URL firmada igual."
+                )
         except Exception as e:
             logger.warning(f"[SIGNED_URL] Aviso al verificar existencia: {e}")
 

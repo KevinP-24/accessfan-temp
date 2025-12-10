@@ -107,5 +107,28 @@ class StructuredLogger:
         
         self.logger.error(f"ERROR: {json.dumps(log_data)}")
 
+    def log_event(self, event_type, message, video_id=None, user_id=None, details=None):
+        """
+        Registra eventos informativos del sistema (no errores).
+        
+        Args:
+            event_type (str): Tipo de evento (p.ej. 'API_UPLOAD_URL')
+            message (str): Mensaje descriptivo
+            video_id (int, optional): ID del video relacionado
+            user_id (int, optional): ID del usuario relacionado
+            details (dict, optional): Información adicional
+        """
+        log_data = {
+            'event_type': event_type,
+            'message': message,
+            'video_id': video_id,
+            'user_id': user_id,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        if details:
+            log_data['details'] = details
+        
+        self.logger.info(f"EVENT: {json.dumps(log_data)}")
+
 # Instancia global para usar en toda la aplicación
 audit_logger = StructuredLogger()

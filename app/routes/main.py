@@ -1,6 +1,6 @@
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort
-from app.services.gcs_service import subir_a_gcs, _get_bucket, obtener_url_firmada, obtener_url_logo
+from app.services.gcs_service import subir_a_gcs, _get_bucket, obtener_url_firmada, obtener_url_firmada_upload
 from app.services.video_duration_service import obtener_duracion_video
 from app.services.video_processor import procesar_video_individual
 from app.services.video_batch_worker import procesar_videos_pendientes_batch
@@ -10,9 +10,10 @@ from app.models.club import Club
 from app import db
 from datetime import datetime
 import logging
-import threading
 from app.services import secret_manager_service as secrets
 import math
+from datetime import datetime
+import uuid
 
 #Cantidad de videos que se cargan
 ADMIN_VIDEOS_PAGE_SIZE = int(os.getenv("ADMIN_VIDEOS_PAGE_SIZE", 100))
@@ -591,3 +592,93 @@ def health_check():
             "timestamp": datetime.utcnow().isoformat(),
             "error": str(e)
         }), 500
+
+
+#========================================
+@main.post("/api/upload-url")
+def api_upload_url():
+    try:
+        data = request.get_json(force=True) or {}
+
+        nombre_archivo = data.get("nombre_archivo") or "video.mp4"
+        content_type   = data.get("content_type")   or "video/mp4"
+        descripcion    = (data.get("descripcion") or "").strip()
+        club_id        = data.get("club_id")
+
+        # Usuario desde header
+        usuario_id = obtener_usuario_desde_header()
+
+        # Construir object_name (mismo patrón que ya tienes)
+        base, ext = os.path.splitext(nombre_archivo)
+        if not ext:
+            ext = ".mp4"
+
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        safe_base = base.replace(" ", "_")[:40] or "video"
+        object_name = (
+            f"uploads/club_{club_id}_{timestamp}_{safe_base}{ext}"
+            if club_id
+            else f"uploads/{timestamp}_{safe_base}{ext}"
+        )
+
+        # 1) URL firmada de SUBIDA (PUT)
+        info_upload = obtener_url_firmada_upload(
+            object_name=object_name,
+            content_type=content_type,
+            minutos=60
+        )
+
+        # 2) URL firmada de LECTURA (GET) para preview
+        try:
+            info_get = obtener_url_firmada(object_name, horas=24)
+            video_url = info_get.get("url", "")
+        except Exception as e:
+            audit_logger.log_error(
+                error_type="SIGNED_URL_GET_ERROR",
+                message=f"No se pudo generar URL GET para preview: {e}",
+                video_id=None,
+                user_id=usuario_id,
+            )
+            video_url = ""
+
+        # 3) Crear registro en BD (SIN club_id en el modelo)
+        nuevo_video = Video(
+            usuario_id=usuario_id,
+            video_url=video_url,          # ← ahora queda llena
+            gcs_object_name=object_name,
+            nombre_archivo=nombre_archivo,
+            duracion=0.0,                 # la IA o el servicio de duración lo actualizarán
+            descripcion=descripcion or "Sin descripción proporcionada",
+            estado="sin-revisar",
+            estado_ia="pendiente",
+            contenido_explicito="No analizado"
+        )
+
+        db.session.add(nuevo_video)
+        db.session.commit()
+
+        audit_logger.log_event(
+            event_type="API_UPLOAD_URL",
+            message="URL firmada de subida generada",
+            video_id=nuevo_video.id,
+            details={
+                "gcs_object_name": object_name,
+                "bucket": info_upload["bucket"],
+                "mode": info_upload["mode"],
+                "content_type": content_type,
+            }
+        )
+
+        return jsonify({
+            "upload_url": info_upload["url"],
+            "object_name": object_name,
+            "video_id": nuevo_video.id
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        audit_logger.log_error(
+            error_type="API_UPLOAD_URL_ERROR",
+            message=f"Error generando URL firmada: {str(e)}"
+        )
+        return jsonify({"error": "upload_url_error"}), 500

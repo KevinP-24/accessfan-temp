@@ -22,6 +22,12 @@ const uploadForm = document.getElementById('upload-form');
 const submitBtn = document.getElementById('submit-btn');
 const uploadProgress = document.getElementById('upload-progress');
 
+// Límite aproximado que Cloud Run aguanta en una petición HTTP (~32MB)
+const CLOUD_RUN_LIMIT_BYTES = 32 * 1024 * 1024;
+
+// Flag para prevenir múltiples envíos
+let isSubmitting = false;
+
 // Manejar selección de archivos
 videoInput.addEventListener('change', function (event) {
     const file = event.target.files[0];
@@ -85,8 +91,9 @@ videoInput.addEventListener('change', function (event) {
 
         // Manejar error al cargar video
         preview.addEventListener('error', function() {
-            if (durationValueElement) {
-                durationValueElement.textContent = 'Error al calcular';
+            const durationValueElementErr = document.getElementById('duration-value');
+            if (durationValueElementErr) {
+                durationValueElementErr.textContent = 'Error al calcular';
             }
         }, { once: true });
 
@@ -155,29 +162,6 @@ fileLabel.addEventListener('drop', function (e) {
     }
 });
 
-// Interceptar el submit del formulario
-uploadForm.addEventListener('submit', function(e) {
-    e.preventDefault(); // Prevenir envío normal
-    
-    // Validar que hay un archivo seleccionado
-    if (!videoInput.files || !videoInput.files[0]) {
-        alert('Por favor, selecciona un video antes de continuar.');
-        return;
-    }
-    
-    // Mostrar barra de progreso
-    showUploadProgress();
-    
-    // Deshabilitar el botón
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span>Subiendo...</span>';
-    
-    // Enviar el formulario después de un breve delay para mostrar la UI
-    setTimeout(() => {
-        uploadForm.submit();
-    }, 100);
-});
-
 // Función para mostrar la barra de progreso
 function showUploadProgress() {
     if (uploadProgress) {
@@ -202,7 +186,122 @@ function hideUploadProgress() {
     // Rehabilitar el botón
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<span>Subir Video</span>';
+    isSubmitting = false;
 }
+
+// Helpers para subida directa a GCS con URL firmada
+async function pedirUrlFirmada(file) {
+    const descripcionInput = document.getElementById('descripcion');
+    const clubIdInput = document.getElementById('club_id');
+
+    const payload = {
+        nombre_archivo: file.name,
+        content_type: file.type || 'video/mp4',
+        descripcion: descripcionInput ? descripcionInput.value : '',
+        club_id: clubIdInput ? clubIdInput.value : null
+        // usuario_id se resuelve en backend desde el header
+    };
+
+    const res = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        throw new Error('No se pudo obtener URL firmada de subida');
+    }
+
+    return res.json(); // { upload_url, object_name, video_id }
+}
+
+function subirDirectoGCS(uploadUrl, file, onProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+
+        xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable && typeof onProgress === 'function') {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                onProgress(percent);
+            }
+        };
+
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve();
+            } else {
+                reject(new Error('Error HTTP ' + xhr.status));
+            }
+        };
+
+        xhr.onerror = function () {
+            reject(new Error('Fallo de red durante la subida'));
+        };
+
+        xhr.send(file);
+    });
+}
+
+// Interceptar el submit del formulario (un solo listener centralizado)
+function handleSubmit(e) {
+    e.preventDefault(); // Prevenir envío normal para decidir ruta
+
+    if (isSubmitting) {
+        return;
+    }
+    isSubmitting = true;
+
+    // Validar que hay un archivo seleccionado
+    if (!videoInput.files || !videoInput.files[0]) {
+        alert('Por favor, selecciona un video antes de continuar.');
+        isSubmitting = false;
+        return;
+    }
+
+    const file = videoInput.files[0];
+
+    // Mostrar barra de progreso
+    showUploadProgress();
+
+    // Deshabilitar el botón
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Subiendo...</span>';
+
+    // RUTA 1: archivos pequeños (<= límite de Cloud Run) -> submit normal a /upload
+    if (file.size <= CLOUD_RUN_LIMIT_BYTES) {
+        // Quitamos el listener para evitar loop y hacemos submit normal
+        uploadForm.removeEventListener('submit', handleSubmit);
+        uploadForm.submit();
+        return;
+    }
+
+    // RUTA 2: archivos grandes -> subida directa a GCS + redirect
+    (async () => {
+        try {
+            // 1) Pedir URL firmada + registro en BD
+            const { upload_url } = await pedirUrlFirmada(file);
+
+            // 2) Subir directo a GCS con progreso
+            await subirDirectoGCS(upload_url, file, (percent) => {
+                const bar = document.querySelector('#upload-progress .progress-bar');
+                const label = document.querySelector('#upload-progress .progress-label');
+                if (bar) bar.style.width = percent + '%';
+                if (label) label.textContent = percent + '%';
+            });
+
+            // 3) Redirigir a la misma pantalla de éxito que ya usas
+            window.location.href = '/upload_prueba?success=true';
+        } catch (err) {
+            console.error('Error en subida directa:', err);
+            alert('Ocurrió un error subiendo el video. Intenta de nuevo.');
+            hideUploadProgress();
+        }
+    })();
+}
+
+uploadForm.addEventListener('submit', handleSubmit);
 
 // Estilos iniciales para el video preview
 if (preview) {
@@ -223,15 +322,5 @@ if (successMessage) {
         }, 300);
     }, 5000);
 }
-
-// Prevenir múltiples envíos
-let isSubmitting = false;
-uploadForm.addEventListener('submit', function(e) {
-    if (isSubmitting) {
-        e.preventDefault();
-        return;
-    }
-    isSubmitting = true;
-});
 
 console.log('Upload.js cargado correctamente');
