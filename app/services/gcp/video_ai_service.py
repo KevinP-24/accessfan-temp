@@ -5,9 +5,9 @@ import logging
 from typing import Dict, List, Optional
 from google.cloud import videointelligence_v1 as vi
 from google.oauth2 import service_account
-from app.services.logging_service import audit_logger
-from app.services.translation_service import traducir_etiquetas, traducir_contenido_explicito, traducir_logos
-from app.services.text_detection_service import analizar_texto_en_video
+from app.services.core.logging_service import audit_logger
+from app.services.i18n.translation_service import traducir_etiquetas, traducir_contenido_explicito, traducir_logos
+from app.services.moderation.text_detection_service import analizar_texto_en_video
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
     # === BLOQUE 2: Análisis con Gemini (Vertex AI) ===
     if use_vertex:
         try:
-            from app.services.vertex_ai_video_service import analizar_video_gemini
+            from app.services.gcp.vertex_ai_video_service import analizar_video_gemini
             import json, re
             logger.info("[GEMINI] Ejecutando análisis Vertex AI...")
 
@@ -158,7 +158,7 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
     nivel_problema = resultados_texto.get("nivel_problema", "bajo")
 
     # === BLOQUE 7: Calcular puntaje de seguridad ===
-    from app.services.video_ai_service import _calcular_puntaje_confianza  # asegurar import local
+    from app.services.gcp.video_ai_service import _calcular_puntaje_confianza  # asegurar import local
     puntaje = _calcular_puntaje_confianza(annotation_result, objetos_detectados, alertas_visual)
 
     # Penalización adicional si alertas_visual

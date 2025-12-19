@@ -4,8 +4,8 @@ import os
 from typing import List, Optional
 from app import db
 from app.models.video import Video
-from app.services.video_ai_service import analizar_video_completo
-from app.services.logging_service import audit_logger
+from app.services.gcp.video_ai_service import analizar_video_completo
+from app.services.core.logging_service import audit_logger
 
 # Configurar logging
 logger = logging.getLogger(__name__)

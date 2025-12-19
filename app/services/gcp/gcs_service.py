@@ -6,7 +6,7 @@ from google.cloud import storage
 from google.oauth2 import service_account
 from google.auth import default as auth_default
 from google.auth.transport.requests import Request
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 import logging
 logger = logging.getLogger(__name__)
 

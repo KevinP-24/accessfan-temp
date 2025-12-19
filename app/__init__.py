@@ -1,9 +1,9 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 
 # 1) Cargar variables desde Secret Manager ANTES de importar Config
-from app.services.secret_manager_service import cargar_variables_desde_secret
+from app.services.gcp.secret_manager_service import cargar_variables_desde_secret
 cargar_variables_desde_secret()
 
 # 2) Ahora sí importar Config (ya con os.environ lleno)

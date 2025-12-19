@@ -2,7 +2,7 @@
 import json
 from app import db
 from datetime import datetime
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 
 class Video(db.Model):
     """

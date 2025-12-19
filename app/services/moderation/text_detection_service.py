@@ -8,14 +8,14 @@ from google.cloud import vision
 from google.oauth2 import service_account
 import cv2
 import numpy as np
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 # snlap
-from app.services import spanlp_service
+from app.services.moderation import spanlp_service
 # Natural Language API
 import unicodedata
 from functools import lru_cache
 from google.cloud import language_v2 as language
-from app.services import badwords_service
+from app.services.moderation import badwords_service
 
 
 PROVIDER = os.getenv("TEXT_MOD_PROVIDER", "language_v2").lower()

@@ -1,7 +1,7 @@
 import os
 from vertexai import init
 from vertexai.preview.generative_models import GenerativeModel, Part
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 
 PROJECT = os.getenv("VERTEX_PROJECT_ID")
 LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")

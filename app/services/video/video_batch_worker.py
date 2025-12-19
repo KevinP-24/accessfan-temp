@@ -1,6 +1,6 @@
 from app.models.video import Video
 from app import db
-from app.services.video_processor import procesar_video_individual
+from app.services.video.video_processor import procesar_video_individual
 import logging
 
 logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ from google.cloud import secretmanager
 from google.api_core.exceptions import GoogleAPICallError, PermissionDenied, NotFound
 from google.oauth2 import service_account
 import logging
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 
 logger = logging.getLogger(__name__)
 

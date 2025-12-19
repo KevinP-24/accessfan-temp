@@ -1,16 +1,16 @@
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort
-from app.services.gcs_service import subir_a_gcs, _get_bucket, obtener_url_firmada, obtener_url_firmada_upload
-from app.services.video_duration_service import obtener_duracion_video
-from app.services.video_processor import procesar_video_individual
-from app.services.video_batch_worker import procesar_videos_pendientes_batch
-from app.services.logging_service import audit_logger
+from app.services.gcp.gcs_service import subir_a_gcs, _get_bucket, obtener_url_firmada, obtener_url_firmada_upload
+from app.services.video.video_duration_service import obtener_duracion_video
+from app.services.video.video_processor import procesar_video_individual
+from app.services.video.video_batch_worker import procesar_videos_pendientes_batch
+from app.services.core.logging_service import audit_logger
 from app.models.video import Video
 from app.models.club import Club
 from app import db
 from datetime import datetime
 import logging
-from app.services import secret_manager_service as secrets
+from app.services.gcp import secret_manager_service as secrets
 import math
 from datetime import datetime
 import uuid

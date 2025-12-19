@@ -4,7 +4,7 @@ import logging
 from typing import List, Dict, Optional
 from google.cloud import translate_v2 as translate
 from google.oauth2 import service_account
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 
 # Configurar logging
 logger = logging.getLogger(__name__)

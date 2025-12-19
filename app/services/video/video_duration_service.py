@@ -3,7 +3,7 @@ import os
 import tempfile
 import logging
 from typing import Optional
-from app.services.logging_service import audit_logger
+from app.services.core.logging_service import audit_logger
 
 logger = logging.getLogger(__name__)
 
