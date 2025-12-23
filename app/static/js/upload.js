@@ -22,11 +22,10 @@ const uploadForm = document.getElementById('upload-form');
 const submitBtn = document.getElementById('submit-btn');
 const uploadProgress = document.getElementById('upload-progress');
 
-// Límite aproximado que Cloud Run aguanta en una petición HTTP (~32MB)
-const CLOUD_RUN_LIMIT_BYTES = 32 * 1024 * 1024;
 
 // Flag para prevenir múltiples envíos
 let isSubmitting = false;
+let videoDurationSeconds = 0;
 
 // Manejar selección de archivos
 videoInput.addEventListener('change', function (event) {
@@ -78,7 +77,8 @@ videoInput.addEventListener('change', function (event) {
         // Calcular duración cuando el video se carga
         preview.addEventListener('loadedmetadata', function() {
             const duration = preview.duration;
-            
+             // guardar para enviarla al backend
+            videoDurationSeconds = (duration && !isNaN(duration) && isFinite(duration)) ? duration : 0;
             if (duration && !isNaN(duration) && durationValueElement) {
                 const minutes = Math.floor(duration / 60);
                 const seconds = Math.floor(duration % 60);
@@ -91,6 +91,7 @@ videoInput.addEventListener('change', function (event) {
 
         // Manejar error al cargar video
         preview.addEventListener('error', function() {
+            videoDurationSeconds = 0;
             const durationValueElementErr = document.getElementById('duration-value');
             if (durationValueElementErr) {
                 durationValueElementErr.textContent = 'Error al calcular';
@@ -110,6 +111,7 @@ videoInput.addEventListener('change', function (event) {
 
 // Función para resetear el input de archivo
 function resetFileInput() {
+    videoDurationSeconds = 0;
     fileLabel.classList.remove('has-file');
     fileLabel.innerHTML = `
         <div class="upload-icon"><i class="fas fa-video"></i></div>
@@ -189,30 +191,42 @@ function hideUploadProgress() {
     isSubmitting = false;
 }
 
+function getVideoDurationSeconds(file) {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.onloadedmetadata = () => {
+      const d = Number(v.duration);
+      URL.revokeObjectURL(v.src);
+      resolve(Number.isFinite(d) ? d : 0);
+    };
+    v.onerror = () => resolve(0);
+    v.src = URL.createObjectURL(file);
+  });
+}
+
+
 // Helpers para subida directa a GCS con URL firmada
 async function pedirUrlFirmada(file) {
-    const descripcionInput = document.getElementById('descripcion');
-    const clubIdInput = document.getElementById('club_id');
+  const descripcionInput = document.getElementById('desc');
+  const clubIdInput = document.getElementById('club_id_field');
 
-    const payload = {
-        nombre_archivo: file.name,
-        content_type: file.type || 'video/mp4',
-        descripcion: descripcionInput ? descripcionInput.value : '',
-        club_id: clubIdInput ? clubIdInput.value : null
-        // usuario_id se resuelve en backend desde el header
-    };
+  const payload = {
+    nombre_archivo: file.name,
+    content_type: file.type || 'video/mp4',
+    descripcion: descripcionInput ? descripcionInput.value : '',
+    club_id: clubIdInput ? clubIdInput.value : null,
+    duracion: videoDurationSeconds
+  };
 
-    const res = await fetch('/api/upload-url', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-    });
+  const res = await fetch('/api/upload-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
 
-    if (!res.ok) {
-        throw new Error('No se pudo obtener URL firmada de subida');
-    }
-
-    return res.json(); // { upload_url, object_name, video_id }
+  if (!res.ok) throw new Error('No se pudo obtener URL firmada de subida');
+  return res.json();
 }
 
 function subirDirectoGCS(uploadUrl, file, onProgress) {
@@ -268,18 +282,11 @@ function handleSubmit(e) {
     // Deshabilitar el botón
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span>Subiendo...</span>';
-
-    // RUTA 1: archivos pequeños (<= límite de Cloud Run) -> submit normal a /upload
-    if (file.size <= CLOUD_RUN_LIMIT_BYTES) {
-        // Quitamos el listener para evitar loop y hacemos submit normal
-        uploadForm.removeEventListener('submit', handleSubmit);
-        uploadForm.submit();
-        return;
-    }
-
-    // RUTA 2: archivos grandes -> subida directa a GCS + redirect
     (async () => {
         try {
+            if (!videoDurationSeconds || videoDurationSeconds <= 0) {
+                videoDurationSeconds = await getVideoDurationSeconds(file);
+            }
             // 1) Pedir URL firmada + registro en BD
             const { upload_url } = await pedirUrlFirmada(file);
 

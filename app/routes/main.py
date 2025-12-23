@@ -1,7 +1,6 @@
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort
-from app.services.gcp.gcs_service import subir_a_gcs, _get_bucket, obtener_url_firmada, obtener_url_firmada_upload
-from app.services.video.video_duration_service import obtener_duracion_video
+from app.services.gcp.gcs_service import _get_bucket, obtener_url_firmada, obtener_url_firmada_upload
 from app.services.video.video_processor import procesar_video_individual
 from app.services.video.video_batch_worker import procesar_videos_pendientes_batch
 from app.services.core.logging_service import audit_logger
@@ -110,38 +109,6 @@ def obtener_club_por_id(club_id):
         )
         return None
 
-# -------------------------------
-#   FUNCIONES AUXILIARES
-# -------------------------------
-def _procesar_upload_club(club_id, config):
-    video = request.files.get("video")
-    descripcion = (request.form.get("descripcion") or "").strip()
-    if not video:
-        return redirect(url_for("main.upload_dinamico", club_id=club_id, error="no_file"))
-    socio = f"{config.get('nombre','AccessFan')} - {request.headers.get('X-USER-ID','Socio desconocido')}"
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    filename = f"uploads/club_{club_id}_{timestamp}_{video.filename}" if club_id \
-               else f"uploads/accessfan_{timestamp}_{video.filename}"
-    try:
-        duracion_video = obtener_duracion_video(video)
-    except:
-        duracion_video = 0.0
-    object_name, url_inicial, file_size_bytes = subir_a_gcs(video, filename, socio, descripcion)
-    nuevo_video = Video(
-        usuario_id=obtener_usuario_desde_header(),
-        video_url=url_inicial,
-        gcs_object_name=object_name,
-        nombre_archivo=video.filename,
-        duracion=duracion_video,
-        descripcion=descripcion or "Sin descripción proporcionada",
-        estado="sin-revisar",
-        estado_ia="pendiente",
-        contenido_explicito="No analizado"
-    )
-    db.session.add(nuevo_video)
-    db.session.commit()
-    return redirect(url_for("main.upload_hijo", club_id=club_id, success="true"))
-
 @main.post("/events/gcs")
 def events_gcs_trigger():
     """
@@ -162,45 +129,6 @@ def events_gcs_trigger():
 def home():
     """Redirige al listado de videos admin"""
     return redirect(url_for("main.listado_videos"))
-
-# -------------------------------
-#   RUTA DINÁMICA (PARA IFRAME)
-# -------------------------------
-@main.post("/upload")
-def upload_video_dinamico():
-    """Procesar subida de video dinámico"""
-    
-    club_id = request.form.get('club_id') or request.args.get('club_id')
-    
-    config_default = {
-        "id": None,
-        "nombre": "AccessFan",
-        "color": "#F5522C",
-        "logo": None,
-        "titulo": "Subir Video - AccessFan Platform"
-    }
-    
-    if not club_id:
-        config = config_default
-        logger.info("Upload sin club_id, usando configuración por defecto AccessFan")
-        return _procesar_upload_club(None, config)
-    else:
-        try:
-            club_id_int = int(club_id)
-            config = obtener_club_por_id(club_id_int)
-            
-            if not config:
-                logger.warning(f"Club {club_id_int} no encontrado, usando configuración por defecto")
-                config = config_default
-                # ⚠️ Pasar club_id aunque se use config_default
-                return _procesar_upload_club(club_id_int, config)
-            
-            return _procesar_upload_club(club_id_int, config)
-            
-        except ValueError:
-            logger.warning(f"club_id inválido: {club_id}, usando configuración por defecto")
-            config = config_default
-            return _procesar_upload_club(club_id, config)
 # -------------------------------
 #   RUTAS ADMIN 
 # -------------------------------
@@ -549,14 +477,17 @@ def estados_videos():
 # =============================================================
 @main.route('/equipo1')
 def upload_padre():
-    #Obtiene el token de Secret Manager.
-    token_real = secrets.obtener_token_secreto()
+    token_real = None
+    try:
+        token_real = secrets.obtener_token_secreto()
+    except Exception as e:
+        logger.exception(f"Error obteniendo token de Secret Manager en /equipo1: {e}")
+        abort(503, description="No se pudo obtener la credencial de autenticación (Secret Manager).")
 
     if not token_real:
         logger.error("Fallo crítico al obtener el token de Secret Manager. La página no cargará.")
         abort(503, description="No se pudo obtener la credencial de autenticación.")
 
-    # 3. Si el token existe, carga la página y se lo pasa.
     return render_template('iframe_upload.html', auth_token=token_real)
 
 @main.get("/upload_prueba")
@@ -565,7 +496,7 @@ def upload_hijo():
     Renderiza la plantilla genérica del iframe que esperará los datos.
     """
     upload_success = request.args.get("success") == "true"
-    error = request.args.get("error")  # opcional, si quieres mostrar errores en el futuro
+    error = request.args.get("error")  #mostrar errores en el futuro
 
     return render_template(
         "upload.html",
@@ -593,7 +524,6 @@ def health_check():
             "error": str(e)
         }), 500
 
-
 #========================================
 @main.post("/api/upload-url")
 def api_upload_url():
@@ -603,7 +533,16 @@ def api_upload_url():
         nombre_archivo = data.get("nombre_archivo") or "video.mp4"
         content_type   = data.get("content_type")   or "video/mp4"
         descripcion    = (data.get("descripcion") or "").strip()
-        club_id        = data.get("club_id")
+        club_id = data.get("club_id")
+        if club_id in ("", None, "null", "None"):
+            club_id = None
+        duracion_raw = data.get("duracion")
+        try:
+            duracion = float(duracion_raw) if duracion_raw is not None else 0.0
+        except (TypeError, ValueError):
+            duracion = 0.0
+        if not math.isfinite(duracion) or duracion < 0:
+            duracion = 0.0
 
         # Usuario desde header
         usuario_id = obtener_usuario_desde_header()
@@ -647,7 +586,7 @@ def api_upload_url():
             video_url=video_url,          # ← ahora queda llena
             gcs_object_name=object_name,
             nombre_archivo=nombre_archivo,
-            duracion=0.0,                 # la IA o el servicio de duración lo actualizarán
+            duracion=duracion,                 # la IA o el servicio de duración lo actualizarán
             descripcion=descripcion or "Sin descripción proporcionada",
             estado="sin-revisar",
             estado_ia="pendiente",
