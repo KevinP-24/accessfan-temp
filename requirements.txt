@@ -16,3 +16,4 @@ moviepy==1.0.3
 opencv-python-headless==4.10.0.84
 numpy==1.21.2
 spanlp==1.1.0
+google-cloud-tasks==2.16.5

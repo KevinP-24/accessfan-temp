@@ -2,6 +2,7 @@ import os
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, abort
 from app.services.gcp.gcs_service import _get_bucket, obtener_url_firmada, obtener_url_firmada_upload
 from app.services.video.video_processor import procesar_video_individual
+from app.services.gcp.cloud_tasks_service import enqueue_process_video_task
 from app.services.video.video_batch_worker import procesar_videos_pendientes_batch
 from app.services.core.logging_service import audit_logger
 from app.models.video import Video
@@ -13,6 +14,7 @@ from app.services.gcp import secret_manager_service as secrets
 import math
 from datetime import datetime
 import uuid
+import json
 
 #Cantidad de videos que se cargan
 ADMIN_VIDEOS_PAGE_SIZE = int(os.getenv("ADMIN_VIDEOS_PAGE_SIZE", 100))
@@ -70,6 +72,9 @@ def obtener_usuario_desde_header():
     # Por ahora siempre devolver usuario por defecto
     return obtener_usuario_por_defecto()
 
+def _is_cloud_tasks_request(req) -> bool:
+    return bool(req.headers.get("X-CloudTasks-TaskName") or req.headers.get("X-Cloudtasks-Taskname"))
+
 # -------------------------------
 #   FUNCIONES DE CLUB
 # -------------------------------
@@ -111,15 +116,23 @@ def obtener_club_por_id(club_id):
 
 @main.post("/events/gcs")
 def events_gcs_trigger():
-    """
-    Worker disparado por Eventarc cuando un objeto se finalize en GCS.
-    """
     try:
-        stats = procesar_videos_pendientes_batch(limite=3)
-        logger.info(f"[EVENTARC] Resultado batch: {stats}")
+        subject = (request.headers.get("ce-subject") or "").strip()  # objects/<path>
+        if not subject.startswith("objects/"):
+            return ("", 204)
+
+        object_name = subject.replace("objects/", "", 1)
+
+        if not object_name.lower().endswith((".mp4", ".mov", ".avi", ".webm", ".3gp", ".3g2")):
+            logger.info(f"[EVENTARC] ignore object={object_name}")
+            return ("", 204)
+
+        enqueue_process_video_task(object_name)
+        logger.info(f"[EVENTARC] enqueued object={object_name}")
         return ("", 204)
+
     except Exception as e:
-        logger.error(f"[EVENTARC] Error: {e}")
+        logger.exception(f"[EVENTARC] error encolando task: {e}")
         return ("", 500)
 
 # -------------------------------
@@ -523,6 +536,67 @@ def health_check():
             "timestamp": datetime.utcnow().isoformat(),
             "error": str(e)
         }), 500
+
+@main.post("/tasks/process-video")
+def tasks_process_video():
+    if not _is_cloud_tasks_request(request):
+        return ("Forbidden", 403)
+
+    data = request.get_json(silent=True) or {}
+    object_name = (data.get("object_name") or "").strip()
+    if not object_name:
+        return ("", 204)
+
+    task_name = (
+        request.headers.get("X-CloudTasks-TaskName")
+        or request.headers.get("X-Cloudtasks-Taskname")
+    )
+    logger.info(f"[TASK] start task={task_name} object={object_name}")
+
+    try:
+        # 🔒 LOCK ATÓMICO: solo uno puede pasar a 'procesando'
+        updated = (
+            Video.query
+            .filter_by(gcs_object_name=object_name)
+            .filter(Video.estado_ia.in_(["pendiente", "error"]))
+            .update(
+                {Video.estado_ia: "procesando"},
+                synchronize_session=False
+            )
+        )
+        db.session.commit()
+
+        if updated == 0:
+            # Otro worker ya lo tomó o ya está completado
+            logger.info(f"[TASK] skip object={object_name} (locked or done)")
+            return ("", 204)
+
+        video = Video.query.filter_by(gcs_object_name=object_name).first()
+        if not video:
+            return ("", 204)
+
+        resultado = procesar_video_individual(video)
+
+        video.estado_ia = "completado" if resultado.get("exitoso") else "error"
+        db.session.commit()
+
+        logger.info(
+            f"[TASK] done task={task_name} "
+            f"video_id={video.id} estado_ia={video.estado_ia}"
+        )
+        return ("", 204)
+
+    except Exception as e:
+        logger.exception(f"[TASK] error task={task_name} object={object_name}")
+        try:
+            video = Video.query.filter_by(gcs_object_name=object_name).first()
+            if video:
+                video.estado_ia = "error"
+                db.session.commit()
+        except Exception:
+            pass
+        # 500 => Cloud Tasks reintenta
+        return ("", 500)
 
 #========================================
 @main.post("/api/upload-url")
