@@ -15,6 +15,7 @@ import math
 from datetime import datetime
 import uuid
 import json
+import hashlib
 
 #Cantidad de videos que se cargan
 ADMIN_VIDEOS_PAGE_SIZE = int(os.getenv("ADMIN_VIDEOS_PAGE_SIZE", 100))
@@ -607,9 +608,11 @@ def api_upload_url():
         nombre_archivo = data.get("nombre_archivo") or "video.mp4"
         content_type   = data.get("content_type")   or "video/mp4"
         descripcion    = (data.get("descripcion") or "").strip()
+
         club_id = data.get("club_id")
         if club_id in ("", None, "null", "None"):
             club_id = None
+
         duracion_raw = data.get("duracion")
         try:
             duracion = float(duracion_raw) if duracion_raw is not None else 0.0
@@ -618,21 +621,27 @@ def api_upload_url():
         if not math.isfinite(duracion) or duracion < 0:
             duracion = 0.0
 
-        # Usuario desde header
+        # Usuario
         usuario_id = obtener_usuario_desde_header()
 
-        # Construir object_name (mismo patrón que ya tienes)
+        # Construir object_name
         base, ext = os.path.splitext(nombre_archivo)
         if not ext:
             ext = ".mp4"
 
         timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
         safe_base = base.replace(" ", "_")[:40] or "video"
+
         object_name = (
             f"uploads/club_{club_id}_{timestamp}_{safe_base}{ext}"
             if club_id
             else f"uploads/{timestamp}_{safe_base}{ext}"
         )
+
+        # === IDEMPOTENCY KEY (CRÍTICO) ===
+        import hashlib
+        raw = f"{usuario_id}|{object_name}|{duracion}"
+        idempotency_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
         # 1) URL firmada de SUBIDA (PUT)
         info_upload = obtener_url_firmada_upload(
@@ -641,7 +650,7 @@ def api_upload_url():
             minutos=60
         )
 
-        # 2) URL firmada de LECTURA (GET) para preview
+        # 2) URL firmada de LECTURA (GET)
         try:
             info_get = obtener_url_firmada(object_name, horas=24)
             video_url = info_get.get("url", "")
@@ -649,26 +658,29 @@ def api_upload_url():
             audit_logger.log_error(
                 error_type="SIGNED_URL_GET_ERROR",
                 message=f"No se pudo generar URL GET para preview: {e}",
-                video_id=None,
                 user_id=usuario_id,
             )
             video_url = ""
 
-        # 3) Crear registro en BD (SIN club_id en el modelo)
+        # 3) Crear registro en BD
         nuevo_video = Video(
             usuario_id=usuario_id,
-            video_url=video_url,          # ← ahora queda llena
+            video_url=video_url,
             gcs_object_name=object_name,
             nombre_archivo=nombre_archivo,
-            duracion=duracion,                 # la IA o el servicio de duración lo actualizarán
+            duracion=duracion,
             descripcion=descripcion or "Sin descripción proporcionada",
             estado="sin-revisar",
             estado_ia="pendiente",
-            contenido_explicito="No analizado"
+            contenido_explicito="No analizado",
+            idempotency_key=idempotency_key,   # ← CLAVE
         )
 
         db.session.add(nuevo_video)
         db.session.commit()
+
+        enqueue_process_video_task(object_name)
+
 
         audit_logger.log_event(
             event_type="API_UPLOAD_URL",

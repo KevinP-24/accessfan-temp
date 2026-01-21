@@ -34,6 +34,8 @@ class Video(db.Model):
     palabras_problematicas_texto = db.Column(db.Text, nullable=True, comment="Lista de palabras problemáticas encontradas.")
     nivel_problema_texto = db.Column(db.String(20), nullable=True, default='limpio', comment="Clasificación del texto: limpio, sospechoso, problematico, error.")
     frames_texto_analizados = db.Column(db.Integer, nullable=True, default=0, comment="Número de frames analizados para texto.")
+    # ... arriba con las demás columnas
+    idempotency_key = db.Column(db.String(128), nullable=True, index=True)
 
     # --- Constantes de Estado ---
     ESTADOS_ADMIN = ['sin-revisar', 'aceptado', 'rechazado']
