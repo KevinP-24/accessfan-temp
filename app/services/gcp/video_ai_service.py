@@ -49,8 +49,14 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
     use_vertex = os.getenv("USE_VERTEX_AI", "false").lower() in ("true", "1", "yes")
 
     # === BLOQUE 1: Inicialización de variables ===
-    gemini_resultado, objetos_gemini, texto_gemini, alertas_gemini = {}, [], "", []
-    alertas_visual = []
+    gemini_resultado = {}
+    objetos_gemini: List[Dict] = []
+    texto_gemini: str = ""
+    alertas_gemini: List[str] = []
+    evidencia_gemini: List[Dict] = []
+
+    alertas_visual: List[str] = []
+    alertas_set = set()  # SIEMPRE definido (evita NameError cuando use_vertex=false)
 
     # === BLOQUE 2: Análisis con Gemini (Vertex AI) ===
     if use_vertex:
@@ -58,30 +64,70 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
             from app.services.gcp.vertex_ai_video_service import analizar_video_gemini
             import json, re
             logger.info("[GEMINI] Ejecutando análisis Vertex AI...")
-
             gemini_resultado = analizar_video_gemini(gcs_uri)
             raw = gemini_resultado.get("raw_text", "")
-
-            # Limpiar formato ```json
             if raw:
                 clean = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).strip()
                 try:
                     gemini_resultado = json.loads(clean)
                 except Exception:
-                    logger.warning("[GEMINI] No se pudo parsear JSON limpio, usando texto crudo.")
+                    logger.warning("[GEMINI] No se pudo parsear JSON limpio; se usará el dict original si trae campos.")
 
-            objetos_gemini = gemini_resultado.get("objetos_detectados", [])
-            texto_gemini = (
-                ", ".join(gemini_resultado.get("texto_detectado", []))
-                if isinstance(gemini_resultado.get("texto_detectado"), list)
-                else gemini_resultado.get("texto_detectado", "")
+            objetos_gemini = gemini_resultado.get("objetos_detectados", []) or []
+            evidencia_gemini = gemini_resultado.get("evidencia", []) or []
+
+            texto_val = gemini_resultado.get("texto_detectado", [])
+            if isinstance(texto_val, list):
+                texto_gemini = ", ".join([str(x) for x in texto_val if str(x).strip()])
+            else:
+                texto_gemini = str(texto_val or "").strip()
+
+            alertas_gemini = gemini_resultado.get("alertas", []) or []
+
+            # Normalizar alertas Gemini (SIN conducta_obscena: todo va a gesto_obsceno)
+            for a in alertas_gemini:
+                x = str(a).strip().lower().replace(" ", "_")
+                if x in ("arma", "arma_de_fuego", "pistola", "gun", "firearm", "weapon_firearm"):
+                    alertas_set.add("arma_fuego")
+                elif x in ("arma_blanca", "cuchillo", "knife", "blade", "navaja", "machete", "weapon_knife"):
+                    alertas_set.add("arma_blanca")
+                elif x in ("gesto_obsceno", "dedo_medio", "middle_finger", "fuck_you"):
+                    alertas_set.add("gesto_obsceno")
+                elif x in ("violencia", "sangre", "blood", "violence", "fight", "aggression"):
+                    alertas_set.add("violencia")
+                elif x in ("amenaza", "threat", "intimidacion", "intimidation", "neck_cut", "slit_throat"):
+                    alertas_set.add("amenaza")
+
+            # Normalizar evidencia Gemini (SIN conducta_obscena: todo va a gesto_obsceno)
+            for ev in evidencia_gemini:
+                try:
+                    t = str(ev.get("tipo", "")).strip().lower().replace(" ", "_")
+                    if t in ("arma", "arma_de_fuego", "pistola", "gun", "firearm"):
+                        ev["tipo"] = "arma_fuego"
+                    elif t in ("arma_blanca", "cuchillo", "knife", "blade", "navaja", "machete"):
+                        ev["tipo"] = "arma_blanca"
+                    elif t in ("gesto_obsceno", "dedo_medio", "middle_finger", "fuck_you"):
+                        ev["tipo"] = "gesto_obsceno"
+                    elif t in ("conducta_obscena", "genital_grab", "sexual_gesture"):
+                        ev["tipo"] = "gesto_obsceno"
+                    elif t in ("violencia", "blood", "fight", "aggression"):
+                        ev["tipo"] = "violencia"
+                    elif t in ("amenaza", "threat", "intimidation", "neck_cut", "slit_throat"):
+                        ev["tipo"] = "amenaza"
+                except Exception:
+                    continue
+
+            logger.info(
+                f"[GEMINI] {len(objetos_gemini)} objetos | alertas={sorted(alertas_set)} | evidencia={len(evidencia_gemini)}"
             )
-            alertas_gemini = gemini_resultado.get("alertas", [])
-            logger.info(f"[GEMINI] {len(objetos_gemini)} objetos | alertas={alertas_gemini}")
 
         except Exception as e:
             logger.warning(f"[GEMINI] Error: {e}. Continuando con Video Intelligence.")
             gemini_resultado = {}
+            objetos_gemini = []
+            texto_gemini = ""
+            evidencia_gemini = []
+            alertas_set = set()
 
     # === BLOQUE 3: Análisis con Video Intelligence ===
     try:
@@ -120,12 +166,45 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
     if objetos_gemini:
         objetos_detectados.extend(objetos_gemini)
 
-    # Detectar alertas visuales (armas, violencia, etc.)
+    # Inyectar "objetos" sintéticos desde alertas Gemini (SIN conducta obscena)
+    if "gesto_obsceno" in alertas_set:
+        objetos_detectados.append({
+            "label": "gesto obsceno",
+            "label_original": "gemini",
+            "es_arma": False,
+            "tipo_arma": "",
+            "confianza": 0.9
+        })
+
+    if "amenaza" in alertas_set:
+        objetos_detectados.append({
+            "label": "amenaza",
+            "label_original": "gemini",
+            "es_arma": False,
+            "tipo_arma": "",
+            "confianza": 0.9
+        })
+
+    if "violencia" in alertas_set:
+        objetos_detectados.append({
+        "label": "violencia",
+        "label_original": "gemini",
+        "es_arma": False,
+        "tipo_arma": "",
+        "confianza": 0.9
+    })
+        
+
+    # Alertas visuales desde objetos (VI/Gemini) por keywords
     for obj in objetos_detectados:
         label = str(obj.get("label", "")).lower()
-        if "arma" in label or "cuchillo" in label or "pistola" in label:
+        if any(k in label for k in ("arma", "cuchillo", "pistola", "knife", "blade", "cutlery", "utensil", "kitchen knife")):
             alertas_visual.append(label)
-    alertas_visual.extend([a for a in alertas_gemini if a not in alertas_visual])
+
+    # Alertas normalizadas de Gemini con prioridad
+    for a in alertas_set:
+        if a not in alertas_visual:
+            alertas_visual.append(a)
 
     logger.info(f"[MERGE] Total objetos fusionados={len(objetos_detectados)} | alertas_visual={alertas_visual}")
 
@@ -150,43 +229,66 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
             "frames_analizados": 0,
         }
 
-    texto_final = resultados_texto.get("texto_detectado", "")
+    texto_final = resultados_texto.get("texto_detectado", "") or ""
     if texto_gemini:
         texto_final = f"{texto_final}, {texto_gemini}".strip(", ")
 
-    palabras_problematicas = resultados_texto.get("palabras_problematicas", "")
-    nivel_problema = resultados_texto.get("nivel_problema", "bajo")
+    palabras_problematicas = resultados_texto.get("palabras_problematicas", "") or ""
+    nivel_problema = resultados_texto.get("nivel_problema", "bajo") or "bajo"
 
     # === BLOQUE 7: Calcular puntaje de seguridad ===
-    from app.services.gcp.video_ai_service import _calcular_puntaje_confianza  # asegurar import local
+    from app.services.gcp.video_ai_service import _calcular_puntaje_confianza
     puntaje = _calcular_puntaje_confianza(annotation_result, objetos_detectados, alertas_visual)
 
-    # Penalización adicional si alertas_visual
     if alertas_visual:
         puntaje = max(0.0, puntaje * 0.7)
         logger.warning(f"[CONF] Penalización adicional por alertas visuales: {alertas_visual}")
 
-    # === BLOQUE 8: Estados y veredicto IA ===
+    # === BLOQUE 8: Estados y veredicto IA (solo lo necesario) ===
     estado_visual, estado_texto, veredicto_ia = "Seguro", "Limpio", "Seguro"
 
-    if alertas_visual or puntaje < 0.6:
-        estado_visual = "Amenazante" if alertas_visual else "Riesgoso"
+    # Hard rule por evidencia de amenaza “corte al cuello”
+    hard_rule = None
+    for ev in (evidencia_gemini or []):
+        ev_tipo = str(ev.get("tipo", "")).strip().lower()
+        ev_desc = str(ev.get("descripcion", "")).lower()
+        ev_conf = float(ev.get("confianza", 0.0) or 0.0)
+        if ev_tipo == "amenaza" and any(k in ev_desc for k in ("cuello", "degoll", "corte", "slit", "throat", "neck")) and ev_conf >= 0.5:
+            hard_rule = ("THREAT_NECK_CUT", ev_conf, ev_desc)
+            estado_visual, veredicto_ia = "Amenazante", "Amenazante"
+            break
 
+    # Fallback por alertas
+    if not hard_rule:
+        if "arma_fuego" in alertas_set or "amenaza" in alertas_set:
+            estado_visual, veredicto_ia = "Amenazante", "Amenazante"
+        elif {"arma_blanca", "violencia", "gesto_obsceno"} & alertas_set:
+            estado_visual, veredicto_ia = "Riesgoso", "Riesgoso"
+        elif puntaje < 0.6 or alertas_visual:
+            estado_visual, veredicto_ia = "Riesgoso", "Riesgoso"
+
+    # Estado texto
     if nivel_problema in ("alto", "error"):
         estado_texto = "Crítico"
     elif nivel_problema == "medio":
         estado_texto = "Advertencia"
 
-    if estado_visual in ("Amenazante", "Riesgoso") or estado_texto in ("Crítico", "Advertencia"):
+    # Mezcla texto->veredicto
+    if estado_texto in ("Crítico", "Advertencia") and veredicto_ia != "Amenazante":
         veredicto_ia = "Riesgoso"
+        if estado_visual == "Seguro":
+            estado_visual = "Riesgoso"
+
     if "arma" in palabras_problematicas.lower():
         veredicto_ia = "Amenazante"
+        estado_visual = "Amenazante"
 
     # === BLOQUE 9: Construcción de respuesta final ===
     tiempo_total = time.time() - start_time
+
     datos_procesados = {
         "etiquetas": etiquetas_es,
-        "contenido_explicito": "Gemini + VideoIntelligence" if use_vertex else contenido_explicito_es,
+        "contenido_explicito": contenido_explicito_es,
         "logotipos": logotipos_es,
         "objetos_detectados": objetos_detectados,
         "alertas_visual": list(set(alertas_visual)),
@@ -198,8 +300,10 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
         "texto_detectado": texto_final,
         "palabras_problematicas": palabras_problematicas,
         "nivel_problema_texto": nivel_problema,
-        "frames_texto_analizados": resultados_texto["frames_analizados"],
-        # originales
+        "frames_texto_analizados": resultados_texto.get("frames_analizados", 0),
+        "fuente_analisis": "Gemini + VideoIntelligence" if use_vertex else "VideoIntelligence",
+        "alertas_gemini_normalizadas": sorted(list(alertas_set)),
+        "evidencia_gemini": evidencia_gemini,
         "etiquetas_original": etiquetas_en,
         "contenido_explicito_original": contenido_explicito_en,
         "logotipos_original": logotipos_en,
@@ -450,7 +554,7 @@ def _procesar_objetos(annotation_result) -> List[Dict]:
             "knife","blade","dagger","machete","sword","cutlass",
             "cutter","razor","scissors","shears","cutlery","utensil",
             "kitchen knife","pocket knife","switchblade","box cutter",
-            "x-acto","scalpel","screwdriver","shank","shiv"
+            "x-acto","scalpel","screwdriver","shank","shiv","table knife", "butter knife", "steak knife", "tableware", "kitchen utensil"
         }
         ARMAS_FUEGO_KEYWORDS = {
             "gun","pistol","rifle","firearm","shotgun",

@@ -157,6 +157,20 @@ class Video(db.Model):
         if self.estado_ia == "error":
             return {"text": "Error en análisis", "color": "secondary", "reason": None}
 
+        if any("gesto obsceno" in label for label in etiquetas_detectadas):
+            return {
+                "text": "Riesgoso",
+                "color": "warning",
+                "reason": "Gesto obsceno detectado"
+            }
+        
+        if any("conducta obscena" in label for label in etiquetas_detectadas):
+            return {
+                "text": "Amenazante",
+                "color": "danger",
+                "reason": "Conducta obscena explícita"
+            }
+
         # --- Análisis visual (prioridad de interpretación) ---
         # Contenido sexual o sugestivo detectado
         if ce in (
