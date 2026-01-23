@@ -78,6 +78,7 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
         a) Simular ataque al cuello con cuchillo (incluye cubierto) o acercarlo al cuello como intimidación
         b) Gesto claro de “corte” en el cuello (con mano/dedo o con objeto) como señal de amenaza
         - REGLA FUERTE: el gesto manda más que el objeto. Si hay gesto de degollamiento/corte al cuello => marca "amenaza" aunque el objeto sea cotidiano.
+        - REGLA CRÍTICA: si el gesto es con cuchillo/cubierto visible (aunque sea de mesa), TAMBIÉN debes marcar "arma_blanca" y agregar "arma_blanca" en alertas.
 
         ========================
         4) CONTEXTO DE RIESGO (solo visible)
@@ -154,7 +155,7 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
             }
         - alertas incluye "amenaza"
         - evidencia incluye tipo="amenaza"
-        - si hay cuchillo/cubierto visible, también agrega "arma_blanca" (A)
+        - OBLIGATORIO: si hay cuchillo/cubierto visible (aunque sea de mesa), también agrega "arma_blanca" (A) y "arma_blanca" en alertas.
 
         C) Arma de fuego
         - Si ves pistola/rifle/revólver/escopeta:

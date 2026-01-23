@@ -117,6 +117,17 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
                 except Exception:
                     continue
 
+                hay_cuchillo = any(
+                    any(k in str(o.get("notas", "")).lower() for k in ("cuchillo", "knife", "blade", "cubierto", "cutlery", "utensil", "table knife", "butter knife", "steak knife"))
+                    for o in (objetos_gemini or [])
+                ) or any(
+                    any(k in str(ev.get("descripcion", "")).lower() for k in ("cuchillo", "knife", "blade", "cubierto", "cutlery", "utensil", "table knife", "cuello", "degoll", "corte", "slit", "throat", "neck"))
+                    for ev in (evidencia_gemini or [])
+                )
+
+                if hay_cuchillo:
+                    alertas_set.add("arma_blanca")
+
             logger.info(
                 f"[GEMINI] {len(objetos_gemini)} objetos | alertas={sorted(alertas_set)} | evidencia={len(evidencia_gemini)}"
             )
@@ -184,6 +195,16 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
             "tipo_arma": "",
             "confianza": 0.9
         })
+
+    if "arma_blanca" in alertas_set:
+        objetos_detectados.append({
+        "label": "arma blanca",
+        "label_original": "gemini",
+        "es_arma": True,
+        "tipo_arma": "blanca",
+        "confianza": 0.9
+    })
+
 
     if "violencia" in alertas_set:
         objetos_detectados.append({
