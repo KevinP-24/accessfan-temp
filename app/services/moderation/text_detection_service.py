@@ -188,9 +188,9 @@ def analizar_texto_en_video(gcs_uri: str, video_id: int = None) -> Dict:
             palabras_spanlp = spanlp_service.detectar_palabras(texto_completo)
 
             # 3) Detectar con badwords_service
-            from app.services import badwords_service
             bw_result = badwords_service.detect_badwords(texto_completo)
             palabras_badwords = bw_result.get("found", [])
+
 
             # 4) Unir todas las fuentes
             palabras_encontradas = _fusionar_palabras(
