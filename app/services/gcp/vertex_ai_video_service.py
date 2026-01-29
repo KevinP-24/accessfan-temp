@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import mimetypes
 from vertexai import init
 from vertexai.preview.generative_models import GenerativeModel, Part
 from app.services.core.logging_service import audit_logger
@@ -9,24 +10,19 @@ PROJECT = os.getenv("VERTEX_PROJECT_ID")
 LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
 MODEL_NAME = os.getenv("VERTEX_FOUNDATION_MODEL", "gemini-2.5-flash")
 
-# --- helper: extraer JSON aunque venga con basura ---
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 def _extract_json(text: str) -> dict:
     if not text:
         return {}
     t = text.strip()
-
-    # Quitar fences si vienen
     t = re.sub(r"```(?:json)?", "", t, flags=re.IGNORECASE).strip()
 
-    # 1) Intento directo
     try:
         return json.loads(t)
     except Exception:
         pass
 
-    # 2) Buscar el primer bloque {...}
     m = _JSON_RE.search(t)
     if m:
         try:
@@ -36,6 +32,24 @@ def _extract_json(text: str) -> dict:
 
     return {"raw_text": text}
 
+def _guess_video_mime(gcs_uri: str) -> str:
+    """
+    Intenta inferir el mime por extensión. Fallback a mp4 si no lo logra.
+    Nota: .mov -> video/quicktime (lo correcto).
+    """
+    mime, _ = mimetypes.guess_type(gcs_uri)
+
+    # Normalizar algunos casos típicos
+    ext = (gcs_uri.rsplit(".", 1)[-1].lower() if "." in gcs_uri else "")
+    if ext == "mov":
+        return "video/quicktime"
+    if ext == "mkv":
+        return "video/x-matroska"
+    if ext == "avi":
+        return "video/x-msvideo"
+
+    return mime or "video/mp4"
+
 def analizar_video_gemini(gcs_uri: str) -> dict:
     """
     Analiza un video en GCS usando Gemini (modelo multimodal).
@@ -44,7 +58,16 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
     try:
         init(project=PROJECT, location=LOCATION)
         model = GenerativeModel(MODEL_NAME)
-        video_part = Part.from_uri(gcs_uri, mime_type="video/mp4")
+
+        mime = _guess_video_mime(gcs_uri)
+        video_part = Part.from_uri(gcs_uri, mime_type=mime)
+
+        # Log para confirmar qué mime usó (útil para debug)
+        audit_logger.log_error(
+            error_type="GEMINI_VIDEO_MIME",
+            message="Mime usado para análisis Gemini",
+            details={"gcs_uri": gcs_uri, "mime": mime}
+        )
 
         prompt = """
         Eres un analista de moderación de video para un entorno corporativo. Detecta SOLO hallazgos VISIBLES y clasifícalos con evidencia.
@@ -74,11 +97,16 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
         3) VIOLENCIA / AMENAZA / INTIMIDACIÓN (acciones y gestos)
         - Violencia: peleas, agresiones, golpes visibles, empujones, forcejeo.
         - Amenaza/intimidación: mostrar un arma para intimidar, apuntar, postura amenazante evidente.
-        - SEÑALES EXPLÍCITAS de amenaza con arma blanca o gestos simbólicos:
-        a) Simular ataque al cuello con cuchillo (incluye cubierto) o acercarlo al cuello como intimidación
-        b) Gesto claro de “corte” en el cuello (con mano/dedo o con objeto) como señal de amenaza
-        - REGLA FUERTE: el gesto manda más que el objeto. Si hay gesto de degollamiento/corte al cuello => marca "amenaza" aunque el objeto sea cotidiano.
-        - REGLA CRÍTICA: si el gesto es con cuchillo/cubierto visible (aunque sea de mesa), TAMBIÉN debes marcar "arma_blanca" y agregar "arma_blanca" en alertas.
+
+        - SEÑALES EXPLÍCITAS de amenaza o violencia (gestos simbólicos o acciones):
+        a) Simular ataque al cuello con cuchillo (incluye cubierto) o acercarlo al cuello como intimidación.
+        b) Gesto claro de “corte” en el cuello (con mano/dedo o con objeto) como señal de amenaza.
+        c) Ahorcamiento / estrangulación: mano o brazo presionando el cuello, agarre sostenido del cuello, o gesto claro de asfixia.
+
+        - REGLA FUERTE: el gesto manda más que el objeto.
+        • Si hay gesto de degollamiento/corte al cuello o estrangulación => marca "amenaza" aunque el objeto sea cotidiano o no haya objeto.
+        - REGLA CRÍTICA:
+        • Si el gesto es con cuchillo/cubierto visible (aunque sea de mesa), TAMBIÉN debes marcar "arma_blanca" y agregar "arma_blanca" en alertas.
 
         ========================
         4) CONTEXTO DE RIESGO (solo visible)
@@ -175,6 +203,12 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
         - alertas incluye "violencia"
         - evidencia tipo="violencia"
 
+        F) Ahorcamiento / estrangulación
+        - Si ves mano/brazo presionando el cuello o asfixia visible:
+        - objetos_detectados += { "label":"amenaza", "confianza": X, "es_arma": false, "tipo_arma":"", "es_gesto_obsceno": false, "notas":"posible ahorcamiento/estrangulación" }
+        - alertas incluye "amenaza"
+        - evidencia tipo="amenaza"
+
         ========================
         SI NO HAY HALLAZGOS
         Si no detectas nada relevante, responde:
@@ -185,10 +219,8 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
         - "resumen": "sin hallazgos"
         """
 
-
         response = model.generate_content([video_part, prompt])
         texto = (response.text or "").strip()
-
         data = _extract_json(texto)
 
         # Normalización defensiva (para que el pipeline no se rompa)
@@ -211,6 +243,7 @@ def analizar_video_gemini(gcs_uri: str) -> dict:
     except Exception as e:
         audit_logger.log_error(
             error_type="GEMINI_VIDEO_ANALYSIS_ERROR",
-            message=f"Error analizando video con Gemini: {str(e)}"
+            message=f"Error analizando video con Gemini: {str(e)}",
+            details={"gcs_uri": gcs_uri}
         )
         return {}

@@ -179,12 +179,19 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
 
     # Inyectar "objetos" sintéticos desde alertas Gemini (SIN conducta obscena)
     if "gesto_obsceno" in alertas_set:
+        conf = 0.35
+        for ev in (evidencia_gemini or []):
+            if str(ev.get("tipo","")).lower() == "gesto_obsceno":
+                try:
+                    conf = float(ev.get("confianza", conf) or conf)
+                except Exception:
+                    pass
         objetos_detectados.append({
             "label": "gesto obsceno",
             "label_original": "gemini",
             "es_arma": False,
             "tipo_arma": "",
-            "confianza": 0.9
+            "confianza": round(conf, 2)
         })
 
     if "amenaza" in alertas_set:
@@ -274,7 +281,7 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
         ev_tipo = str(ev.get("tipo", "")).strip().lower()
         ev_desc = str(ev.get("descripcion", "")).lower()
         ev_conf = float(ev.get("confianza", 0.0) or 0.0)
-        if ev_tipo == "amenaza" and any(k in ev_desc for k in ("cuello", "degoll", "corte", "slit", "throat", "neck")) and ev_conf >= 0.5:
+        if ev_tipo == "amenaza" and any(k in ev_desc for k in ("cuello", "degoll", "corte", "slit", "throat", "neck")) and ev_conf >= 0.35:
             hard_rule = ("THREAT_NECK_CUT", ev_conf, ev_desc)
             estado_visual, veredicto_ia = "Amenazante", "Amenazante"
             break

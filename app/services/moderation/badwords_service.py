@@ -18,7 +18,7 @@ BADWORDS = {
     # — Masculinos (ES / LATAM, coloquial y jerga) —
         "pija", "pijita", "pijón", "poronga", "porongón", "garompa", "garcha",
         "pichula", "pichulita", "pichulón", "pico", "tula", "tulita", "tulón",
-        "chota", "chotita", "chotón", "riata", "chile", "camote", "monda", "mondá",
+        "chota", "chotita", "chotón", "riata","camote", "monda", "mondá",
         "bicho", "pajarito", "pájaro", "miembro", "miembro viril", "manguera",
         "tranca", "manguaco", "verguilla", "verguita", "vergota", "capullo", "glande",
 
@@ -29,7 +29,7 @@ BADWORDS = {
         "coñito", "conchota", "panochita", "panochón", "cosita", "chucha",
 
         # — Ano / trasero (sin duplicar los ya presentes) —
-        "ojete", "culito", "culazo", "culos", "cola", "colita",
+        "ojete", "culito", "culazo", "culos", "colita",
         "pompis", "pompas", "glúteos", "gluteos", "traserito", "traserote",
         "traserazo", "nalguita", "nalgón", "nalgotas", "nalga", "orificio anal",
         "recto",
@@ -264,7 +264,7 @@ BADWORDS = {
         "feminazi", "homofóbico", "homófobo", "racista", "clasista", "machista",
         "violento", "intolerante", "asesino", "criminal", "degenerado", "asquerosa",
         "puta asquerosa", "negro mugroso", "indio ignorante", "maricón de mierda",
-        "peruano de mierda", "chileno de mierda", "argentino de mierda", "mexicano de mierda",
+        "peruano de mierda", "mierda", "argentino de mierda", "mexicano de mierda",
         "ecuatoriano de mierda", "veneco de mierda", "venezolano de mierda", "paraguayo de mierda",
         "judío de mierda", "árabe terrorista", "moraco", "cabecita negra",
         "simio", "mono", "animal", "bestia", "cerdo humano", "puerco", "inmigrante de mierda",
