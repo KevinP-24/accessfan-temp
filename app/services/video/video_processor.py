@@ -4,7 +4,7 @@ import os
 from typing import List, Optional
 from app import db
 from app.models.video import Video
-from app.services.gcp.video_ai_service import analizar_video_completo
+from app.services.gcp.video_ai_service import analizar_video_completo, TransientQuotaError
 from app.services.core.logging_service import audit_logger
 
 # Configurar logging
@@ -203,6 +203,29 @@ def procesar_video_individual(video: Video) -> dict:
             "tiempo": datos_ia.get('tiempo_procesamiento', 0),
             "datos": datos_ia
         }
+
+    except TransientQuotaError as e:
+        # Cuota/rate-limit: error transitorio -> forzar retry en Cloud Tasks
+        logger.error(f"⏳ Quota/rate-limit (retry) video {video.id}: {e}")
+
+        audit_logger.log_error(
+            error_type="VIDEO_PROCESSOR_QUOTA_RETRY",
+            message=f"Quota/rate-limit (retry) video {video.id}: {str(e)}",
+            video_id=video.id,
+            user_id=video.usuario_id,
+            details={'nombre_archivo': video.nombre_archivo}
+        )
+
+        try:
+            # Dejar marcado como error (tu lock permite reprocesar desde 'error')
+            video.actualizar_estado_ia('error')
+            video.razon_rechazo = f"Quota/rate-limit, se reintentará: {str(e)}"
+            db.session.commit()
+        except Exception as db_error:
+            logger.error(f"Error actualizando BD en quota retry: {db_error}")
+            db.session.rollback()
+
+        raise  # <-- CLAVE: sube al handler de Cloud Tasks -> responde 500 -> retry
 
     except Exception as e:
         logger.error(f"❌ Error procesando video {video.id}: {e}")

@@ -28,6 +28,10 @@ def _get_client():
         )
         raise
 
+class TransientQuotaError(Exception):
+    """Error transitorio (cuota / rate limit) para forzar retry vía Cloud Tasks."""
+    pass
+
 _video_client = None
 
 def _client():
@@ -169,6 +173,19 @@ def analizar_video_completo(gcs_uri: str, timeout_sec: int = 600) -> Dict:
         logger.info(f"[VI] Objetos detectados: {len(objetos_detectados_vi)}")
 
     except Exception as e:
+        msg = str(e)
+
+        # Clasificar cuota/rate-limit como transitorio (para retry)
+        if (
+            "429" in msg
+            or "RATE_LIMIT_EXCEEDED" in msg
+            or "RESOURCE_EXHAUSTED" in msg
+            or "Quota exceeded" in msg
+            or "quota" in msg.lower()
+        ):
+            logger.error(f"[VI] Quota/rate-limit (transitorio): {e}")
+            raise TransientQuotaError(msg) from e
+        
         logger.error(f"[VI] Error analizando video con Video Intelligence: {e}")
         raise
 
